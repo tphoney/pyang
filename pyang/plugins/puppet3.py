@@ -97,7 +97,6 @@ Each node is printed as:
 """)
 
 def emit_puppet3(ctx, modules, fd, depth, path):
-    #pdb.set_trace()
     for module in modules:
         printed_header = False
 
@@ -106,7 +105,7 @@ def emit_puppet3(ctx, modules, fd, depth, path):
             b = module.search_one('belongs-to')
             if b is not None:
                 bstr = " (belongs-to %s)" % b.arg
-            fd.write("%s: %s%s\n" % (module.keyword, module.arg, bstr))
+            fd.write("%s %s%s {\n" % (module.keyword, module.arg, bstr))
             printed_header = True
 
         chs = [ch for ch in module.i_children
@@ -180,7 +179,7 @@ def emit_puppet3(ctx, modules, fd, depth, path):
                 print_children(g.i_children, module, fd, '    ', path,
                                'grouping', depth)
                 fd.write('\n')
-
+    fd.write('}')
 
 def print_children(i_children, module, fd, prefix, path, mode, depth, width=0):
     if depth == 0:
@@ -231,12 +230,12 @@ def print_node(s, module, fd, prefix, path, mode, depth, width):
     flags = get_flags_str(s, mode)
     if s.keyword == 'list':
         name += '*'
-        fd.write(flags + " " + name)
+        #fd.write(flags + " " + name)
     elif s.keyword == 'container':
         p = s.search_one('presence')
         if p is not None:
             name += '!'
-        fd.write(flags + " " + name)
+        #fd.write(flags + " " + name)
     elif s.keyword  == 'choice':
         m = s.search_one('mandatory')
         if m is None or m.arg == 'false':
@@ -258,13 +257,20 @@ def print_node(s, module, fd, prefix, path, mode, depth, width):
             fd.write("%s %s" % (flags, name))
         else:
             #fd.write("%s %-*s   %s" % (flags, width+1, name, t))
-            fd.write("""newproperty(:{0}) do
+#            import ipdb; ipdb.set_trace()
+
+            if s.keyword == 'leaf' and s.search_one('key') is not None:
+              fd.write("""newshizzle(:{0}) do
+  desc '{1}'
+end\n""".format(name.replace('-','_'), s.search_one('description').arg.replace('\n',' ')))
+            else:
+              fd.write("""newproperty(:{0}) do
   desc '{1}'
 end\n""".format(name.replace('-','_'), s.search_one('description').arg.replace('\n',' ')))
 
     # This is some top level shit
-    if s.keyword == 'list' and s.search_one('key') is not None:
-        fd.write(" [%s]" % re.sub('\s+', ' ', s.search_one('key').arg))
+    #if s.keyword == 'list' and s.search_one('key') is not None:
+    #    fd.write(" [%s]" % re.sub('\s+', ' ', s.search_one('key').arg))
 
     features = s.search('if-feature')
     if len(features) > 0:
