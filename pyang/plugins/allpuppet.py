@@ -53,6 +53,10 @@ class AllPuppetPlugin(plugin.PyangPlugin):
                                  default="data",
                                  help="Type of sample XML document " +
                                  "(data or config)."),
+            optparse.make_option("--allpuppet-output-format",
+                                 dest="output_format",
+                                 default="all",
+                                 help="one of type/self_instances/flush/test/all"),
             optparse.make_option("--allpuppet-defaults",
                                  action="store_true",
                                  dest="sample_defaults",
@@ -99,6 +103,7 @@ class AllPuppetPlugin(plugin.PyangPlugin):
         if self.doctype not in ("config", "data"):
             raise error.EmitError("Unsupported document type: %s" %
                                   self.doctype)
+        self.output_format = ctx.opts.output_format
         self.annots = ctx.opts.sample_annots
         self.defaults = ctx.opts.sample_defaults
         self.fd = fd
@@ -125,7 +130,7 @@ class AllPuppetPlugin(plugin.PyangPlugin):
             self.tree.write(fd, encoding="unicode", xml_declaration=True)
         elif sys.version > "2.7":
             #pdb.set_trace()
-            fd.write("Module: {0}\n\n".format(yam.arg))
+            #fd.write("Module: {0}\n\n".format(yam.arg))
             self.tree.write(fd, encoding="UTF-8", xml_declaration=True)
         else:
             self.tree.write(fd, encoding="UTF-8")
@@ -145,8 +150,8 @@ class AllPuppetPlugin(plugin.PyangPlugin):
         #pdb.set_trace()
         nel, newm, path = self.sample_element(node, elem, module, path)
         if elem.tag == "data":
-            #self.fd.write("top level bitch {0}".format(nel.tag))
-            self.fd.write("""Puppet::Type.newtype(:{0}) do\n""".format(nel.tag.replace('-','_')))
+            if self.output_format in ("type", "all"):
+                self.fd.write("""Puppet::Type.newtype(:{0}) do\n""".format(nel.tag.replace('-','_')))
         if path is None:
             return
         if self.annots:
@@ -157,17 +162,24 @@ class AllPuppetPlugin(plugin.PyangPlugin):
 
     def leaf(self, node, elem, module, path):
         """Create a sample leaf element."""
-        self.fd.write("""    newproperty(:{0}) do
-          desc '{1}'
-        end\n""".format(node.arg.replace('-','_'), node.search_one('description').arg.replace('\n',' ').replace("\'","\\'")))
-        #pdb.set_trace()
-        if node.search_one('type').arg.lower() == 'empty':
-            xpath = "!(interface.xpath(\"{0}/{1}\").empty?)".format(self.tree.getpath(elem), node.arg)
-        else:
-            xpath = "interface.xpath(\"{0}/{1}\").text".format(self.tree.getpath(elem), node.arg)
-        provider = ":{0}  => ".format(node.arg.replace('-','_'))
-        self.fd.write(provider + xpath + "\n")
-        
+        if self.output_format in ("type", "all"):
+            self.fd.write("""  newproperty(:{0}) do
+    desc '{1}'
+  end\n""".format(node.arg.replace('-','_'), node.search_one('description').arg.replace('\n',' ').replace("\'","\\'")))
+            #pdb.set_trace()
+
+        if self.output_format in ("self_instances", "all"):
+          if node.search_one('type').arg.lower() == 'empty':
+              xpath = "!(interface.xpath(\"{0}/{1}\").empty?)".format(self.tree.getpath(elem), node.arg)
+          else:
+              xpath = "interface.xpath(\"{0}/{1}\").text".format(self.tree.getpath(elem), node.arg)
+          provider = ":{0}  => ".format(node.arg.replace('-','_'))
+          self.fd.write(provider + xpath + "\n")
+
+        if self.output_format in ("flush", "all"):
+          xpath = "\"{0}/{1}\"".format(self.tree.getpath(elem), node.arg)
+          self.fd.write("flush " + xpath + "\n")
+
         if node.i_default is None:
             nel, newm, path = self.sample_element(node, elem, module, path)
             if path is None:
