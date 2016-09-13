@@ -170,9 +170,9 @@ class AllPuppetPlugin(plugin.PyangPlugin):
 
         if self.output_format in ("self_instances", "all"):
           if node.search_one('type').arg.lower() == 'empty':
-              xpath = "!(interface.xpath(\"{0}/{1}\").empty?)".format(self.tree.getpath(elem), node.arg)
+              xpath = "!(variable.xpath(\"{0}/{1}\").empty?)".format(self.tree.getpath(elem), node.arg)
           else:
-              xpath = "interface.xpath(\"{0}/{1}\").text".format(self.tree.getpath(elem), node.arg)
+              xpath = "variable.xpath(\"{0}/{1}\").text".format(self.tree.getpath(elem), node.arg)
           provider = ":{0}  => ".format(node.arg.replace('-','_'))
           self.fd.write(provider + xpath + "\n")
 
