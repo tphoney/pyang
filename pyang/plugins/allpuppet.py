@@ -57,6 +57,10 @@ class AllPuppetPlugin(plugin.PyangPlugin):
                                  dest="output_format",
                                  default="all",
                                  help="one of type/self_instances/flush/test/all"),
+            optparse.make_option("--allpuppet-naming-seed",
+                                 dest="naming_seed",
+                                 default="",
+                                 help="what is the starting point for the attribute name"),
             optparse.make_option("--allpuppet-defaults",
                                  action="store_true",
                                  dest="sample_defaults",
@@ -104,6 +108,7 @@ class AllPuppetPlugin(plugin.PyangPlugin):
             raise error.EmitError("Unsupported document type: %s" %
                                   self.doctype)
         self.output_format = ctx.opts.output_format
+        self.naming_seed = ctx.opts.naming_seed
         self.annots = ctx.opts.sample_annots
         self.defaults = ctx.opts.sample_defaults
         self.fd = fd
@@ -163,18 +168,56 @@ class AllPuppetPlugin(plugin.PyangPlugin):
     def leaf(self, node, elem, module, path):
         """Create a sample leaf element."""
         if self.output_format in ("type", "all"):
-            self.fd.write("""  newproperty(:{0}) do
+            if self.naming_seed == '':
+                self.fd.write("""  newproperty(:{0}) do
     desc '{1}'
   end\n""".format(node.arg.replace('-','_'), node.search_one('description').arg.replace('\n',' ').replace("\'","\\'")))
-            #pdb.set_trace()
+            else:
+                prefix  = self.tree.getpath(elem).split(self.naming_seed)[1].replace('/','_')
+                if prefix != '':
+                    #we are nested
+                    attribute_name = prefix + "_" + node.arg.replace('-','_')
+                    # remove leading _
+                    attribute_name = attribute_name[1:]
+                else:
+                    #we are not nested
+                    attribute_name = node.arg.replace('-','_')
+                self.fd.write("""  newproperty(:{0}) do
+    desc '{1}'
+  end\n""".format(attribute_name, node.search_one('description').arg.replace('\n',' ').replace("\'","\\'")))
 
         if self.output_format in ("self_instances", "all"):
-          if node.search_one('type').arg.lower() == 'empty':
-              xpath = "!(variable.xpath(\"{0}/{1}\").empty?)".format(self.tree.getpath(elem), node.arg)
+          if self.naming_seed == '':
+            attribute_name =  node.arg.replace('-','_')
           else:
+            prefix  = self.tree.getpath(elem).split(self.naming_seed)[1].replace('/','_')
+            if prefix != '':
+                #we are nested
+                attribute_name = prefix + "_" + node.arg.replace('-','_')
+                # remove leading _
+                attribute_name = attribute_name[1:]
+            else:
+                #we are not nested
+                attribute_name = node.arg.replace('-','_')
+          # we now have the attribute name
+
+          if self.naming_seed == '':
+            if node.search_one('type').arg.lower() == 'empty':
+              xpath = "!(variable.xpath(\"{0}/{1}\").empty?)".format(self.tree.getpath(elem), node.arg)
+            else:
               xpath = "variable.xpath(\"{0}/{1}\").text".format(self.tree.getpath(elem), node.arg)
-          provider = ":{0}  => ".format(node.arg.replace('-','_'))
-          self.fd.write(provider + xpath + "\n")
+          else:
+            actual_xpath = self.tree.getpath(elem).split(self.naming_seed)[1]
+            if actual_xpath != '':
+               actual_xpath = "./" + self.tree.getpath(elem).split(self.naming_seed)[1] + "/" + node.arg
+            else:
+               actual_xpath = node.arg
+            if node.search_one('type').arg.lower() == 'empty':
+                xpath = "!(variable.xpath(\"{0}\").empty?)".format(actual_xpath)
+            else:
+                xpath = "variable.xpath(\"{0}\").text".format(actual_xpath)
+          provider = ":{0}  => ".format(attribute_name)
+          self.fd.write(provider + xpath + ",\n")
 
         if self.output_format in ("flush", "all"):
           xpath = "\"{0}/{1}\"".format(self.tree.getpath(elem), node.arg)
