@@ -220,8 +220,28 @@ class AllPuppetPlugin(plugin.PyangPlugin):
           self.fd.write(provider + xpath + ",\n")
 
         if self.output_format in ("flush", "all"):
-          xpath = "\"{0}/{1}\"".format(self.tree.getpath(elem), node.arg)
-          self.fd.write("flush " + xpath + "\n")
+          if self.naming_seed == '':
+            attribute_name =  node.arg.replace('-','_')
+          else:
+            prefix  = self.tree.getpath(elem).split(self.naming_seed)[1].replace('/','_')
+            if prefix != '':
+                #we are nested
+                attribute_name = prefix + "_" + node.arg.replace('-','_')
+                # remove leading _
+                attribute_name = attribute_name[1:]
+            else:
+                #we are not nested
+                attribute_name = node.arg.replace('-','_')
+          # we now have the attribute name
+
+          #pdb.set_trace()
+          if module.i_modulename == 'ietf-interfaces':
+            # we are not namespaced
+            self.fd.write("\"" + attribute_name + "\" => \"" + node.arg + "\",\n")
+          else:
+            # we are namespaced
+            name_spaced_path = "/" + self.tree.getpath(elem).split(self.naming_seed)[1].replace('/','/ns:') + "/ns:" + node.arg.replace('-','_')
+            self.fd.write("\"" + attribute_name + "\" => [\"" + name_spaced_path + "\", \"" + self.ns_uri[node.main_module()] + "\"],\n")
 
         if node.i_default is None:
             nel, newm, path = self.sample_element(node, elem, module, path)
