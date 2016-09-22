@@ -39,7 +39,7 @@ import pdb
 
 from lxml import etree as ET
 from pyang import plugin, statements, error
-from pyang.util import unique_prefixes
+from pyang.util import dictsearch, unique_prefixes
 
 def pyang_plugin_init():
     plugin.register_plugin(AllPuppetPlugin())
@@ -173,10 +173,13 @@ class AllPuppetPlugin(plugin.PyangPlugin):
     desc '{1}'
   end\n""".format(node.arg.replace('-','_'), node.search_one('description').arg.replace('\n',' ').replace("\'","\\'")))
             else:
-                prefix  = self.tree.getpath(elem).split(self.naming_seed)[1].replace('/','_')
+                try:
+                    prefix  = self.tree.getpath(elem).split(self.naming_seed)[1].replace('/','_')
+                except IndexError:
+                    prefix =''
                 if prefix != '':
                     #we are nested
-                    attribute_name = prefix + "_" + node.arg.replace('-','_')
+                    attribute_name = (prefix + "_" + node.arg).replace('-','_')
                     # remove leading _
                     attribute_name = attribute_name[1:]
                 else:
@@ -190,10 +193,14 @@ class AllPuppetPlugin(plugin.PyangPlugin):
           if self.naming_seed == '':
             attribute_name =  node.arg.replace('-','_')
           else:
-            prefix  = self.tree.getpath(elem).split(self.naming_seed)[1].replace('/','_')
+            #pdb.set_trace()
+            try:
+                prefix  = self.tree.getpath(elem).split(self.naming_seed)[1].replace('/','_')
+            except IndexError:
+                prefix = ''
             if prefix != '':
                 #we are nested
-                attribute_name = prefix + "_" + node.arg.replace('-','_')
+                attribute_name = (prefix + "_" + node.arg).replace('-','_')
                 # remove leading _
                 attribute_name = attribute_name[1:]
             else:
@@ -207,7 +214,10 @@ class AllPuppetPlugin(plugin.PyangPlugin):
             else:
               xpath = "variable.xpath(\"{0}/{1}\").text".format(self.tree.getpath(elem), node.arg)
           else:
-            actual_xpath = self.tree.getpath(elem).split(self.naming_seed)[1]
+            try:
+                actual_xpath = self.tree.getpath(elem).split(self.naming_seed)[1]
+            except IndexError:
+                actual_xpath = ''
             if actual_xpath != '':
                actual_xpath = "./" + self.tree.getpath(elem).split(self.naming_seed)[1] + "/" + node.arg
             else:
@@ -223,10 +233,13 @@ class AllPuppetPlugin(plugin.PyangPlugin):
           if self.naming_seed == '':
             attribute_name =  node.arg.replace('-','_')
           else:
-            prefix  = self.tree.getpath(elem).split(self.naming_seed)[1].replace('/','_')
+            try:
+                prefix  = self.tree.getpath(elem).split(self.naming_seed)[1].replace('/','_')
+            except IndexError:
+                prefix = ''
             if prefix != '':
                 #we are nested
-                attribute_name = prefix + "_" + node.arg.replace('-','_')
+                attribute_name = (prefix + "_" + node.arg).replace('-','_')
                 # remove leading _
                 attribute_name = attribute_name[1:]
             else:
@@ -235,13 +248,28 @@ class AllPuppetPlugin(plugin.PyangPlugin):
           # we now have the attribute name
 
           #pdb.set_trace()
-          if module.i_modulename == 'ietf-interfaces':
-            # we are not namespaced
-            self.fd.write("\"" + attribute_name + "\" => \"" + node.arg + "\",\n")
-          else:
-            # we are namespaced
+          # Check to see if the module being processed augments anything - namespace if so
+        #   if len(module.search('augment')) > 0:
+        #     # we are namespaced
+        #     try:
+        #         name_spaced_path = "/" + self.tree.getpath(elem).split(self.naming_seed)[1].replace('/','/ns:') + "/ns:" + node.arg.replace('-','_')
+        #     except IndexError:
+        #         name_spaced_path = ''
+        #     self.fd.write("\"" + attribute_name + "\" => [\"" + name_spaced_path + "\", \"" + self.ns_uri[node.main_module()] + "\"],\n")
+        #   else:
+        #     # we are not namespaced
+        #     self.fd.write("\"" + attribute_name + "\" => \"" + node.arg + "\",\n")
+
+        #   if module.i_modulename == 'ietf-routing':
+        #     # we are not namespaced
+        #     self.fd.write("\"" + attribute_name + "\" => \"" + node.arg + "\",\n")
+        #   else:
+        #     # we are namespaced
+        try:
             name_spaced_path = "/" + self.tree.getpath(elem).split(self.naming_seed)[1].replace('/','/ns:') + "/ns:" + node.arg.replace('-','_')
-            self.fd.write("\"" + attribute_name + "\" => [\"" + name_spaced_path + "\", \"" + self.ns_uri[node.main_module()] + "\"],\n")
+        except IndexError:
+            name_spaced_path = "/" + self.tree.getpath(elem).replace('/','/ns:') + "/ns:" + node.arg.replace('-','_')
+        self.fd.write("\"" + attribute_name + "\" => [\"" + name_spaced_path + "\", \"" + elem.attrib['xmlns'] + "\"],\n")
 
         if node.i_default is None:
             nel, newm, path = self.sample_element(node, elem, module, path)
@@ -303,10 +331,20 @@ class AllPuppetPlugin(plugin.PyangPlugin):
 
         res = ET.SubElement(parent, node.arg)
         mm = node.main_module()
+        # if res.tag == 'af':
+        #     pdb.set_trace()
         if mm != module:
-            #self.fd.write("NS YO {0}".format(self.ns_uri[mm]))
+            #self.fd.write("NS YO {0}\n".format(self.ns_uri[mm]))
             res.attrib["xmlns"] = self.ns_uri[mm]
             module = mm
+        else:
+            # Check if node is extending a base identiy, if so use base namespace
+            try:
+                identity_prefix = node.search_one('type').search_one('base').arg.split(':')[0]
+                prefix_uri = dictsearch(identity_prefix, unique_prefixes(mm.i_ctx))
+                res.attrib["xmlns"] = self.ns_uri[prefix_uri]
+            except:
+                res.attrib["xmlns"] = self.ns_uri[module]
         return res, module, path
 
     def add_copies(self, node, parent, elem, minel):
