@@ -131,14 +131,21 @@ class AllPuppetPlugin(plugin.PyangPlugin):
         self.tree = ET.ElementTree(self.top)
         for yam in modules:
             self.process_children(yam, self.top, None, path)
-        if sys.version > "3":
-            self.tree.write(fd, encoding="unicode", xml_declaration=True)
-        elif sys.version > "2.7":
-            #pdb.set_trace()
-            #fd.write("Module: {0}\n\n".format(yam.arg))
-            self.tree.write(fd, encoding="UTF-8", xml_declaration=True)
-        else:
-            self.tree.write(fd, encoding="UTF-8")
+
+        if self.output_format in ("flush", "all"):
+            print '\n**Flush XML Template**'
+            if sys.version > "3":
+                self.tree.write(fd, encoding="unicode", xml_declaration=True)
+            elif sys.version > "2.7":
+                self.tree.write(fd, encoding="UTF-8", xml_declaration=True)
+            else:
+                self.tree.write(fd, encoding="UTF-8")
+
+            # Get the dictionary of namespaces and their prefix
+            comp = ["'{0}' => '{1}'".format(unique_prefixes(ctx)[k], v) for k, v in self.ns_uri.iteritems()]
+            # Output the ruby hash of namespaces
+            print '\n\n**Flush namespace hash**'
+            print '{ ' + ', '.join(x for x in comp) + ' }'
 
     def ignore(self, node, elem, module, path):
         """Do nothing for `node`."""
@@ -245,31 +252,48 @@ class AllPuppetPlugin(plugin.PyangPlugin):
             else:
                 #we are not nested
                 attribute_name = node.arg.replace('-','_')
-          # we now have the attribute name
 
-          #pdb.set_trace()
-          # Check to see if the module being processed augments anything - namespace if so
-        #   if len(module.search('augment')) > 0:
-        #     # we are namespaced
-        #     try:
-        #         name_spaced_path = "/" + self.tree.getpath(elem).split(self.naming_seed)[1].replace('/','/ns:') + "/ns:" + node.arg.replace('-','_')
-        #     except IndexError:
-        #         name_spaced_path = ''
-        #     self.fd.write("\"" + attribute_name + "\" => [\"" + name_spaced_path + "\", \"" + self.ns_uri[node.main_module()] + "\"],\n")
-        #   else:
-        #     # we are not namespaced
-        #     self.fd.write("\"" + attribute_name + "\" => \"" + node.arg + "\",\n")
+            #pdb.set_trace()
+            # We first need to work with the node itself, we do not know the namespace yet
+            mm = node.main_module()
+            if mm != module:
+                node_ns = self.ns_uri[mm]
+                module = mm
+            else:
+                # Check if node is extending a base identiy, if so use base namespace
+                try:
+                    identity_prefix = node.search_one('type').search_one('base').arg.split(':')[0]
+                    prefix_uri = dictsearch(identity_prefix, unique_prefixes(mm.i_ctx))
+                    node_ns = self.ns_uri[prefix_uri]
+                except:
+                    node_ns = self.ns_uri[module]
 
-        #   if module.i_modulename == 'ietf-routing':
-        #     # we are not namespaced
-        #     self.fd.write("\"" + attribute_name + "\" => \"" + node.arg + "\",\n")
-        #   else:
-        #     # we are namespaced
-        try:
-            name_spaced_path = "/" + self.tree.getpath(elem).split(self.naming_seed)[1].replace('/','/ns:') + "/ns:" + node.arg.replace('-','_')
-        except IndexError:
-            name_spaced_path = "/" + self.tree.getpath(elem).replace('/','/ns:') + "/ns:" + node.arg.replace('-','_')
-        self.fd.write("\"" + attribute_name + "\" => [\"" + name_spaced_path + "\", \"" + elem.attrib['xmlns'] + "\"],\n")
+            # Set the node itself - this is outermost part of xpath
+            ns_object = dictsearch(node_ns, self.ns_uri)
+            name_spaced_path = unique_prefixes(node.main_module().i_ctx)[ns_object] + ':' + node.arg
+            # Set the immediate parent node
+            ns_object = dictsearch(elem.attrib['xmlns'], self.ns_uri)
+            name_spaced_path = unique_prefixes(node.main_module().i_ctx)[ns_object] + ':' + elem.tag + '/' + name_spaced_path
+            #print name_spaced_path
+
+            # Walk backwards for ancestors
+            for parent in elem.iterancestors():
+                # We do not want the document top level
+                if parent.attrib['xmlns'] == 'urn:ietf:params:xml:ns:netconf:base:1.0':
+                    continue
+                else:
+                    # namespace of parent object
+                    ns_object = dictsearch(parent.attrib['xmlns'], self.ns_uri)
+                    # Add parent node and namespace to xpath
+                    name_spaced_path = unique_prefixes(node.main_module().i_ctx)[ns_object] + ':' + parent.tag + '/' + name_spaced_path
+
+            # Write out the flush xpaths
+            self.fd.write("\"" + attribute_name + "\" => \"" + name_spaced_path + "\",\n")
+
+        #pdb.set_trace()
+        #print self.ns_uri
+        # for k, v in self.ns_uri:
+        #     print k + ' ' + v
 
         if node.i_default is None:
             nel, newm, path = self.sample_element(node, elem, module, path)
