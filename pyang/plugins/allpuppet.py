@@ -269,44 +269,44 @@ class AllPuppetPlugin(plugin.PyangPlugin):
                     # we are not nested
                     attribute_name = node.arg.replace('-', '_')
 
+            # pdb.set_trace()
+            # We first need to work with the node itself, we do not know the namespace yet
+            mm = node.main_module()
+            if mm != module:
+                node_ns = self.ns_uri[mm]
+                module = mm
+            # else:
+            #     # Check if node is extending a base identiy, if so use base namespace
+            #     try:
+            #         identity_prefix = node.search_one('type').search_one('base').arg.split(':')[0]
+            #         prefix_uri = dictsearch(identity_prefix, unique_prefixes(mm.i_ctx))
+            #         node_ns = self.ns_uri[prefix_uri]
+            #     except:
+            #         node_ns = self.ns_uri[module]
+            node_ns = self.ns_uri[module]
+
+            # Set the node itself - this is outermost part of xpath
+            ns_object = dictsearch(node_ns, self.ns_uri)
+            name_spaced_path = unique_prefixes(node.main_module().i_ctx)[ns_object] + ':' + node.arg
+            # Set the immediate parent node
+            ns_object = dictsearch(elem.attrib['xmlns'], self.ns_uri)
+            name_spaced_path = unique_prefixes(node.main_module().i_ctx)[ns_object] + ':' + elem.tag + '/' + name_spaced_path
+            # print name_spaced_path
+
+            # Walk backwards for ancestors
+            for parent in elem.iterancestors():
+                # We do not want the document top level
                 # pdb.set_trace()
-                # We first need to work with the node itself, we do not know the namespace yet
-                mm = node.main_module()
-                if mm != module:
-                    node_ns = self.ns_uri[mm]
-                    module = mm
-                # else:
-                #     # Check if node is extending a base identiy, if so use base namespace
-                #     try:
-                #         identity_prefix = node.search_one('type').search_one('base').arg.split(':')[0]
-                #         prefix_uri = dictsearch(identity_prefix, unique_prefixes(mm.i_ctx))
-                #         node_ns = self.ns_uri[prefix_uri]
-                #     except:
-                #         node_ns = self.ns_uri[module]
-                node_ns = self.ns_uri[module]
+                if parent.attrib['xmlns'] == 'urn:ietf:params:xml:ns:netconf:base:1.0':
+                    continue
+                else:
+                    # namespace of parent object
+                    ns_object = dictsearch(parent.attrib['xmlns'], self.ns_uri)
+                    # Add parent node and namespace to xpath
+                    name_spaced_path = unique_prefixes(node.main_module().i_ctx)[ns_object] + ':' + parent.tag + '/' + name_spaced_path
 
-                # Set the node itself - this is outermost part of xpath
-                ns_object = dictsearch(node_ns, self.ns_uri)
-                name_spaced_path = unique_prefixes(node.main_module().i_ctx)[ns_object] + ':' + node.arg
-                # Set the immediate parent node
-                ns_object = dictsearch(elem.attrib['xmlns'], self.ns_uri)
-                name_spaced_path = unique_prefixes(node.main_module().i_ctx)[ns_object] + ':' + elem.tag + '/' + name_spaced_path
-                # print name_spaced_path
-
-                # Walk backwards for ancestors
-                for parent in elem.iterancestors():
-                    # We do not want the document top level
-                    # pdb.set_trace()
-                    if parent.attrib['xmlns'] == 'urn:ietf:params:xml:ns:netconf:base:1.0':
-                        continue
-                    else:
-                        # namespace of parent object
-                        ns_object = dictsearch(parent.attrib['xmlns'], self.ns_uri)
-                        # Add parent node and namespace to xpath
-                        name_spaced_path = unique_prefixes(node.main_module().i_ctx)[ns_object] + ':' + parent.tag + '/' + name_spaced_path
-
-                # Write out the flush xpaths
-                self.fd.write("\"" + attribute_name + "\" => \"" + name_spaced_path + "\",\n")
+            # Write out the flush xpaths
+            self.fd.write("\"" + attribute_name + "\" => \"" + name_spaced_path + "\",\n")
 
         if node.i_default is None:
             nel, newm, path = self.sample_element(node, elem, module, path)
