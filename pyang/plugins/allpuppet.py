@@ -41,8 +41,10 @@ from lxml import etree as ET
 from pyang import plugin, statements, error
 from pyang.util import dictsearch, unique_prefixes
 
+
 def pyang_plugin_init():
     plugin.register_plugin(AllPuppetPlugin())
+
 
 class AllPuppetPlugin(plugin.PyangPlugin):
 
@@ -74,10 +76,11 @@ class AllPuppetPlugin(plugin.PyangPlugin):
             optparse.make_option("--allpuppet-path",
                                  dest="sample_path",
                                  help="Subtree to print"),
-            ]
+        ]
         g = optparser.add_option_group(
             "allpuppet output specific options")
         g.add_options(optlist)
+
     def add_output_format(self, fmts):
         self.multiple_modules = True
         fmts['allpuppet'] = self
@@ -122,17 +125,17 @@ class AllPuppetPlugin(plugin.PyangPlugin):
             "leaf-list": self.leaf_list,
             "rpc": self.ignore,
             "notification": self.ignore
-            }
+        }
         self.ns_uri = {}
         for yam in modules:
             self.ns_uri[yam] = yam.search_one("namespace").arg
         # Build dictionary of all namespaces
-        self.nsmap = {unique_prefixes(ctx)[k]:v for k, v in self.ns_uri.iteritems()}
-        #nsmap[None] = "urn:ietf:params:xml:ns:netconf:base:1.0"
+        self.nsmap = {unique_prefixes(ctx)[k]: v for k, v in self.ns_uri.iteritems()}
+        # nsmap[None] = "urn:ietf:params:xml:ns:netconf:base:1.0"
         self.top = ET.Element(self.doctype,
-                         {"xmlns": "urn:ietf:params:xml:ns:netconf:base:1.0"})
+                              {"xmlns": "urn:ietf:params:xml:ns:netconf:base:1.0"})
         self.tree = ET.ElementTree(self.top)
-        #pdb.set_trace()
+        # pdb.set_trace()
         for yam in modules:
             self.process_children(yam, self.top, None, path)
 
@@ -146,7 +149,7 @@ class AllPuppetPlugin(plugin.PyangPlugin):
                 self.tree.write(fd, encoding="UTF-8")
 
             # Get the dictionary of namespaces and their prefix
-            #pdb.set_trace()
+            # pdb.set_trace()
             comp = ["'{0}' => '{1}'".format(k, v) for k, v in self.nsmap.iteritems()]
             # Output the ruby hash of namespaces
             print '\n\n**Flush namespace hash**'
@@ -164,11 +167,11 @@ class AllPuppetPlugin(plugin.PyangPlugin):
 
     def container(self, node, elem, module, path):
         """Create a sample container element and proceed with its children."""
-        #pdb.set_trace()
+        # pdb.set_trace()
         nel, newm, path = self.sample_element(node, elem, module, path)
         if elem.tag == "data":
             if self.output_format in ("type", "all"):
-                self.fd.write("""Puppet::Type.newtype(:{0}) do\n""".format(nel.tag.replace('-','_')))
+                self.fd.write("""Puppet::Type.newtype(:{0}) do\n""".format(nel.tag.replace('-', '_')))
         if path is None:
             return
         if self.annots:
@@ -182,133 +185,128 @@ class AllPuppetPlugin(plugin.PyangPlugin):
         if self.output_format in ("type", "all"):
             if self.naming_seed == '':
                 try:
-                    description = node.search_one('description').arg.replace('\n',' ').replace("\'","\\'")
+                    description = node.search_one('description').arg.replace('\n', ' ').replace("\'", "\\'")
                 except:
                     description = ''
                 self.fd.write("""  newproperty(:{0}) do
     desc '{1}'
-  end\n""".format(node.arg.replace('-','_'), description))
+  end\n""".format(node.arg.replace('-', '_'), description))
             else:
                 try:
-                    prefix  = self.tree.getpath(elem).split(self.naming_seed)[1].replace('/','_')
+                    prefix = self.tree.getpath(elem).split(self.naming_seed)[1].replace('/', '_')
                 except IndexError:
-                    prefix =''
+                    prefix = ''
                 if prefix != '':
-                    #we are nested
-                    attribute_name = (prefix + "_" + node.arg).replace('-','_')
+                    # we are nested
+                    attribute_name = (prefix + "_" + node.arg).replace('-', '_')
                     # remove leading _
                     attribute_name = attribute_name[1:]
                 else:
-                    #we are not nested
-                    attribute_name = node.arg.replace('-','_')
-                    try:
-                        description = node.search_one('description').arg.replace('\n',' ').replace("\'","\\'")
-                    else:
-                        description = ''
+                    # we are not nested
+                    attribute_name = node.arg.replace('-', '_')
+                try:
+                    description = node.search_one('description').arg.replace('\n', ' ').replace("\'", "\\'")
+                except:
+                    description = ''
                 self.fd.write("""  newproperty(:{0}) do
     desc '{1}'
   end\n""".format(attribute_name, description))
 
         if self.output_format in ("self_instances", "all"):
-          if self.naming_seed == '':
-            attribute_name =  node.arg.replace('-','_')
-          else:
-            #pdb.set_trace()
-            try:
-                prefix  = self.tree.getpath(elem).split(self.naming_seed)[1].replace('/','_')
-            except IndexError:
-                prefix = ''
-            if prefix != '':
-                #we are nested
-                attribute_name = (prefix + "_" + node.arg).replace('-','_')
-                # remove leading _
-                attribute_name = attribute_name[1:]
+            if self.naming_seed == '':
+                attribute_name = node.arg.replace('-', '_')
             else:
-                #we are not nested
-                attribute_name = node.arg.replace('-','_')
-          # we now have the attribute name
+                # pdb.set_trace()
+                try:
+                    prefix = self.tree.getpath(elem).split(self.naming_seed)[1].replace('/', '_')
+                except IndexError:
+                    prefix = ''
+                if prefix != '':
+                    # we are nested
+                    attribute_name = (prefix + "_" + node.arg).replace('-', '_')
+                    # remove leading _
+                    attribute_name = attribute_name[1:]
+                else:
+                    # we are not nested
+                    attribute_name = node.arg.replace('-', '_')
+                    # we now have the attribute name
 
-          if self.naming_seed == '':
-            if node.search_one('type').arg.lower() == 'empty':
-              xpath = "!(variable.xpath(\"{0}/{1}\").empty?)".format(self.tree.getpath(elem), node.arg)
+            if self.naming_seed == '':
+                if node.search_one('type').arg.lower() == 'empty':
+                    xpath = "!(variable.xpath(\"{0}/{1}\").empty?)".format(self.tree.getpath(elem), node.arg)
+                else:
+                    xpath = "variable.xpath(\"{0}/{1}\").text".format(self.tree.getpath(elem), node.arg)
             else:
-              xpath = "variable.xpath(\"{0}/{1}\").text".format(self.tree.getpath(elem), node.arg)
-          else:
-            try:
-                actual_xpath = self.tree.getpath(elem).split(self.naming_seed)[1]
-            except IndexError:
-                actual_xpath = ''
-            if actual_xpath != '':
-               actual_xpath = "./" + self.tree.getpath(elem).split(self.naming_seed)[1] + "/" + node.arg
-            else:
-               actual_xpath = node.arg
-            if node.search_one('type').arg.lower() == 'empty':
-                xpath = "!(variable.xpath(\"{0}\").empty?)".format(actual_xpath)
-            else:
-                xpath = "variable.xpath(\"{0}\").text".format(actual_xpath)
-          provider = ":{0}  => ".format(attribute_name)
-          self.fd.write(provider + xpath + ",\n")
+                try:
+                    actual_xpath = self.tree.getpath(elem).split(self.naming_seed)[1]
+                except IndexError:
+                    actual_xpath = ''
+                if actual_xpath != '':
+                    actual_xpath = "./" + self.tree.getpath(elem).split(self.naming_seed)[1] + "/" + node.arg
+                else:
+                    actual_xpath = node.arg
+                if node.search_one('type').arg.lower() == 'empty':
+                    xpath = "!(variable.xpath(\"{0}\").empty?)".format(actual_xpath)
+                else:
+                    xpath = "variable.xpath(\"{0}\").text".format(actual_xpath)
+            provider = ":{0}  => ".format(attribute_name)
+            self.fd.write(provider + xpath + ",\n")
 
         if self.output_format in ("flush", "all"):
-          if self.naming_seed == '':
-            attribute_name =  node.arg.replace('-','_')
-          else:
-            try:
-                prefix  = self.tree.getpath(elem).split(self.naming_seed)[1].replace('/','_')
-            except IndexError:
-                prefix = ''
-            if prefix != '':
-                #we are nested
-                attribute_name = (prefix + "_" + node.arg).replace('-','_')
-                # remove leading _
-                attribute_name = attribute_name[1:]
+            if self.naming_seed == '':
+                attribute_name = node.arg.replace('-', '_')
             else:
-                #we are not nested
-                attribute_name = node.arg.replace('-','_')
-
-            #pdb.set_trace()
-            # We first need to work with the node itself, we do not know the namespace yet
-            mm = node.main_module()
-            if mm != module:
-                node_ns = self.ns_uri[mm]
-                module = mm
-            # else:
-            #     # Check if node is extending a base identiy, if so use base namespace
-            #     try:
-            #         identity_prefix = node.search_one('type').search_one('base').arg.split(':')[0]
-            #         prefix_uri = dictsearch(identity_prefix, unique_prefixes(mm.i_ctx))
-            #         node_ns = self.ns_uri[prefix_uri]
-            #     except:
-            #         node_ns = self.ns_uri[module]
-            node_ns = self.ns_uri[module]
-
-            # Set the node itself - this is outermost part of xpath
-            ns_object = dictsearch(node_ns, self.ns_uri)
-            name_spaced_path = unique_prefixes(node.main_module().i_ctx)[ns_object] + ':' + node.arg
-            # Set the immediate parent node
-            ns_object = dictsearch(elem.attrib['xmlns'], self.ns_uri)
-            name_spaced_path = unique_prefixes(node.main_module().i_ctx)[ns_object] + ':' + elem.tag + '/' + name_spaced_path
-            #print name_spaced_path
-
-            # Walk backwards for ancestors
-            for parent in elem.iterancestors():
-                # We do not want the document top level
-                #pdb.set_trace()
-                if parent.attrib['xmlns'] == 'urn:ietf:params:xml:ns:netconf:base:1.0':
-                    continue
+                try:
+                    prefix = self.tree.getpath(elem).split(self.naming_seed)[1].replace('/', '_')
+                except IndexError:
+                    prefix = ''
+                if prefix != '':
+                    # we are nested
+                    attribute_name = (prefix + "_" + node.arg).replace('-', '_')
+                    # remove leading _
+                    attribute_name = attribute_name[1:]
                 else:
-                    # namespace of parent object
-                    ns_object = dictsearch(parent.attrib['xmlns'], self.ns_uri)
-                    # Add parent node and namespace to xpath
-                    name_spaced_path = unique_prefixes(node.main_module().i_ctx)[ns_object] + ':' + parent.tag + '/' + name_spaced_path
+                    # we are not nested
+                    attribute_name = node.arg.replace('-', '_')
 
-            # Write out the flush xpaths
-            self.fd.write("\"" + attribute_name + "\" => \"" + name_spaced_path + "\",\n")
+                # pdb.set_trace()
+                # We first need to work with the node itself, we do not know the namespace yet
+                mm = node.main_module()
+                if mm != module:
+                    node_ns = self.ns_uri[mm]
+                    module = mm
+                # else:
+                #     # Check if node is extending a base identiy, if so use base namespace
+                #     try:
+                #         identity_prefix = node.search_one('type').search_one('base').arg.split(':')[0]
+                #         prefix_uri = dictsearch(identity_prefix, unique_prefixes(mm.i_ctx))
+                #         node_ns = self.ns_uri[prefix_uri]
+                #     except:
+                #         node_ns = self.ns_uri[module]
+                node_ns = self.ns_uri[module]
 
-        #pdb.set_trace()
-        #print self.ns_uri
-        # for k, v in self.ns_uri:
-        #     print k + ' ' + v
+                # Set the node itself - this is outermost part of xpath
+                ns_object = dictsearch(node_ns, self.ns_uri)
+                name_spaced_path = unique_prefixes(node.main_module().i_ctx)[ns_object] + ':' + node.arg
+                # Set the immediate parent node
+                ns_object = dictsearch(elem.attrib['xmlns'], self.ns_uri)
+                name_spaced_path = unique_prefixes(node.main_module().i_ctx)[ns_object] + ':' + elem.tag + '/' + name_spaced_path
+                # print name_spaced_path
+
+                # Walk backwards for ancestors
+                for parent in elem.iterancestors():
+                    # We do not want the document top level
+                    # pdb.set_trace()
+                    if parent.attrib['xmlns'] == 'urn:ietf:params:xml:ns:netconf:base:1.0':
+                        continue
+                    else:
+                        # namespace of parent object
+                        ns_object = dictsearch(parent.attrib['xmlns'], self.ns_uri)
+                        # Add parent node and namespace to xpath
+                        name_spaced_path = unique_prefixes(node.main_module().i_ctx)[ns_object] + ':' + parent.tag + '/' + name_spaced_path
+
+                # Write out the flush xpaths
+                self.fd.write("\"" + attribute_name + "\" => \"" + name_spaced_path + "\",\n")
 
         if node.i_default is None:
             nel, newm, path = self.sample_element(node, elem, module, path)
@@ -323,7 +321,6 @@ class AllPuppetPlugin(plugin.PyangPlugin):
             nel.text = str(node.i_default)
 
     def anyxml(self, node, elem, module, path):
-        #self.fd.write("any!!!")
         """Create a sample anyxml element."""
         nel, newm, path = self.sample_element(node, elem, module, path)
         if path is None:
@@ -332,7 +329,6 @@ class AllPuppetPlugin(plugin.PyangPlugin):
             nel.append(ET.Comment(" anyxml "))
 
     def list(self, node, elem, module, path):
-        #self.fd.write("list!!!")
         """Create sample entries of a list."""
         nel, newm, path = self.sample_element(node, elem, module, path)
         if path is None:
@@ -343,7 +339,6 @@ class AllPuppetPlugin(plugin.PyangPlugin):
         self.list_comment(node, nel, minel)
 
     def leaf_list(self, node, elem, module, path):
-        #self.fd.write("l_list!!!")
         """Create sample entries of a leaf-list."""
         nel, newm, path = self.sample_element(node, elem, module, path)
         if path is None:
@@ -370,10 +365,7 @@ class AllPuppetPlugin(plugin.PyangPlugin):
 
         res = ET.SubElement(parent, node.arg, nsmap=self.nsmap)
         mm = node.main_module()
-        # if res.tag == 'af':
-        #     pdb.set_trace()
         if mm != module:
-            #self.fd.write("NS YO {0}\n".format(self.ns_uri[mm]))
             res.attrib["xmlns"] = self.ns_uri[mm]
             module = mm
         # else:
@@ -383,7 +375,7 @@ class AllPuppetPlugin(plugin.PyangPlugin):
         #         prefix_uri = dictsearch(identity_prefix, unique_prefixes(mm.i_ctx))
         #         res.attrib["xmlns"] = self.ns_uri[prefix_uri]
         #     except:
-        #         #pdb.set_trace()
+        #         # pdb.set_trace()
         #         res.attrib["xmlns"] = self.ns_uri[module]
         res.attrib["xmlns"] = self.ns_uri[module]
         return res, module, path
@@ -396,9 +388,9 @@ class AllPuppetPlugin(plugin.PyangPlugin):
 
     def list_comment(self, node, elem, minel):
         """Add list annotation to `elem`."""
-        if not self.annots: return
+        if not self.annots:
+            return
         lo = "0" if minel is None else minel.arg
         maxel = node.search_one("max-elements")
         hi = "" if maxel is None else maxel.arg
-        elem.insert(0, ET.Comment(" # entries: %s..%s " % (lo,hi)))
-
+        elem.insert(0, ET.Comment(" # entries: %s..%s " % (lo, hi)))
