@@ -126,9 +126,13 @@ class AllPuppetPlugin(plugin.PyangPlugin):
         self.ns_uri = {}
         for yam in modules:
             self.ns_uri[yam] = yam.search_one("namespace").arg
+        # Build dictionary of all namespaces
+        self.nsmap = {unique_prefixes(ctx)[k]:v for k, v in self.ns_uri.iteritems()}
+        #nsmap[None] = "urn:ietf:params:xml:ns:netconf:base:1.0"
         self.top = ET.Element(self.doctype,
                          {"xmlns": "urn:ietf:params:xml:ns:netconf:base:1.0"})
         self.tree = ET.ElementTree(self.top)
+        #pdb.set_trace()
         for yam in modules:
             self.process_children(yam, self.top, None, path)
 
@@ -142,7 +146,8 @@ class AllPuppetPlugin(plugin.PyangPlugin):
                 self.tree.write(fd, encoding="UTF-8")
 
             # Get the dictionary of namespaces and their prefix
-            comp = ["'{0}' => '{1}'".format(unique_prefixes(ctx)[k], v) for k, v in self.ns_uri.iteritems()]
+            #pdb.set_trace()
+            comp = ["'{0}' => '{1}'".format(k, v) for k, v in self.nsmap.iteritems()]
             # Output the ruby hash of namespaces
             print '\n\n**Flush namespace hash**'
             print '{ ' + ', '.join(x for x in comp) + ' }'
@@ -259,14 +264,15 @@ class AllPuppetPlugin(plugin.PyangPlugin):
             if mm != module:
                 node_ns = self.ns_uri[mm]
                 module = mm
-            else:
-                # Check if node is extending a base identiy, if so use base namespace
-                try:
-                    identity_prefix = node.search_one('type').search_one('base').arg.split(':')[0]
-                    prefix_uri = dictsearch(identity_prefix, unique_prefixes(mm.i_ctx))
-                    node_ns = self.ns_uri[prefix_uri]
-                except:
-                    node_ns = self.ns_uri[module]
+            # else:
+            #     # Check if node is extending a base identiy, if so use base namespace
+            #     try:
+            #         identity_prefix = node.search_one('type').search_one('base').arg.split(':')[0]
+            #         prefix_uri = dictsearch(identity_prefix, unique_prefixes(mm.i_ctx))
+            #         node_ns = self.ns_uri[prefix_uri]
+            #     except:
+            #         node_ns = self.ns_uri[module]
+            node_ns = self.ns_uri[module]
 
             # Set the node itself - this is outermost part of xpath
             ns_object = dictsearch(node_ns, self.ns_uri)
@@ -279,6 +285,7 @@ class AllPuppetPlugin(plugin.PyangPlugin):
             # Walk backwards for ancestors
             for parent in elem.iterancestors():
                 # We do not want the document top level
+                #pdb.set_trace()
                 if parent.attrib['xmlns'] == 'urn:ietf:params:xml:ns:netconf:base:1.0':
                     continue
                 else:
@@ -353,7 +360,7 @@ class AllPuppetPlugin(plugin.PyangPlugin):
             else:
                 return parent, module, None
 
-        res = ET.SubElement(parent, node.arg)
+        res = ET.SubElement(parent, node.arg, nsmap=self.nsmap)
         mm = node.main_module()
         # if res.tag == 'af':
         #     pdb.set_trace()
@@ -361,14 +368,16 @@ class AllPuppetPlugin(plugin.PyangPlugin):
             #self.fd.write("NS YO {0}\n".format(self.ns_uri[mm]))
             res.attrib["xmlns"] = self.ns_uri[mm]
             module = mm
-        else:
-            # Check if node is extending a base identiy, if so use base namespace
-            try:
-                identity_prefix = node.search_one('type').search_one('base').arg.split(':')[0]
-                prefix_uri = dictsearch(identity_prefix, unique_prefixes(mm.i_ctx))
-                res.attrib["xmlns"] = self.ns_uri[prefix_uri]
-            except:
-                res.attrib["xmlns"] = self.ns_uri[module]
+        # else:
+        #     # Check if node is extending a base identiy, if so use base namespace
+        #     try:
+        #         identity_prefix = node.search_one('type').search_one('base').arg.split(':')[0]
+        #         prefix_uri = dictsearch(identity_prefix, unique_prefixes(mm.i_ctx))
+        #         res.attrib["xmlns"] = self.ns_uri[prefix_uri]
+        #     except:
+        #         #pdb.set_trace()
+        #         res.attrib["xmlns"] = self.ns_uri[module]
+        res.attrib["xmlns"] = self.ns_uri[module]
         return res, module, path
 
     def add_copies(self, node, parent, elem, minel):
