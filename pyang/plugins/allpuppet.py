@@ -181,9 +181,13 @@ class AllPuppetPlugin(plugin.PyangPlugin):
         """Create a sample leaf element."""
         if self.output_format in ("type", "all"):
             if self.naming_seed == '':
+                try:
+                    description = node.search_one('description').arg.replace('\n',' ').replace("\'","\\'")
+                except:
+                    description = ''
                 self.fd.write("""  newproperty(:{0}) do
     desc '{1}'
-  end\n""".format(node.arg.replace('-','_'), node.search_one('description').arg.replace('\n',' ').replace("\'","\\'")))
+  end\n""".format(node.arg.replace('-','_'), description))
             else:
                 try:
                     prefix  = self.tree.getpath(elem).split(self.naming_seed)[1].replace('/','_')
@@ -197,9 +201,13 @@ class AllPuppetPlugin(plugin.PyangPlugin):
                 else:
                     #we are not nested
                     attribute_name = node.arg.replace('-','_')
+                    try:
+                        description = node.search_one('description').arg.replace('\n',' ').replace("\'","\\'")
+                    else:
+                        description = ''
                 self.fd.write("""  newproperty(:{0}) do
     desc '{1}'
-  end\n""".format(attribute_name, node.search_one('description').arg.replace('\n',' ').replace("\'","\\'")))
+  end\n""".format(attribute_name, description))
 
         if self.output_format in ("self_instances", "all"):
           if self.naming_seed == '':
