@@ -182,94 +182,72 @@ class AllPuppetPlugin(plugin.PyangPlugin):
 
     def leaf(self, node, elem, module, path):
         """Create a sample leaf element."""
-        if self.output_format in ("type", "all"):
-            if self.naming_seed == '':
-                try:
-                    description = node.search_one('description').arg.replace('\n', ' ').replace("\'", "\\'")
-                except:
-                    description = ''
-                self.fd.write("""  newproperty(:{0}) do
-    desc '{1}'
-  end\n""".format(node.arg.replace('-', '_'), description))
-            else:
-                try:
-                    prefix = self.tree.getpath(elem).split(self.naming_seed)[1].replace('/', '_')
-                except IndexError:
-                    prefix = ''
-                if prefix != '':
-                    # we are nested
-                    attribute_name = (prefix + "_" + node.arg).replace('-', '_')
-                    # remove leading _
-                    attribute_name = attribute_name[1:]
-                else:
-                    # we are not nested
-                    attribute_name = node.arg.replace('-', '_')
-                try:
-                    description = node.search_one('description').arg.replace('\n', ' ').replace("\'", "\\'")
-                except:
-                    description = ''
-                self.fd.write("""  newproperty(:{0}) do
-    desc '{1}'
-  end\n""".format(attribute_name, description))
+        if self.naming_seed == '':
+            attribute_name = node.arg
+            try:
+                description = node.search_one('description').arg
+            except:
+                description = ''
 
-        if self.output_format in ("self_instances", "all"):
-            if self.naming_seed == '':
-                attribute_name = node.arg.replace('-', '_')
+            if node.search_one('type').arg.lower() == 'boolean':
+                if self.output_format in ("self_instances", "all"):
+                    xpath = "variable.xpath(\"{0}/{1}\").text.downcase == 'true' ? true : nil".format(self.tree.getpath(elem), node.arg)
+                if self.output_format in ("type", "all"):
+                    self.puppet_type(node.arg, description, ptype='boolean')
+            elif node.search_one('type').arg.lower() == 'empty':
+                if self.output_format in ("self_instances", "all"):
+                    xpath = "!(variable.xpath(\"{0}/{1}\").empty?) ? true : nil".format(self.tree.getpath(elem), node.arg)
+                if self.output_format in ("type", "all"):
+                    self.puppet_type(node.arg, description, ptype='boolean')
             else:
-                # pdb.set_trace()
-                try:
-                    prefix = self.tree.getpath(elem).split(self.naming_seed)[1].replace('/', '_')
-                except IndexError:
-                    prefix = ''
-                if prefix != '':
-                    # we are nested
-                    attribute_name = (prefix + "_" + node.arg).replace('-', '_')
-                    # remove leading _
-                    attribute_name = attribute_name[1:]
-                else:
-                    # we are not nested
-                    attribute_name = node.arg.replace('-', '_')
-                    # we now have the attribute name
-
-            if self.naming_seed == '':
-                if node.search_one('type').arg.lower() == 'empty':
-                    xpath = "!(variable.xpath(\"{0}/{1}\").empty?)".format(self.tree.getpath(elem), node.arg)
-                else:
+                if self.output_format in ("self_instances", "all"):
                     xpath = "variable.xpath(\"{0}/{1}\").text".format(self.tree.getpath(elem), node.arg)
+                if self.output_format in ("type", "all"):
+                    self.puppet_type(node.arg, description)
+
+        else:
+            try:
+                prefix = self.tree.getpath(elem).split(self.naming_seed)[1].replace('/', '_')
+            except IndexError:
+                prefix = ''
+            if prefix != '':
+                # we are nested
+                attribute_name = (prefix + "_" + node.arg)
+                # remove leading _
+                attribute_name = attribute_name[1:]
             else:
+                # we are not nested
+                attribute_name = node.arg
+            try:
+                description = node.search_one('description').arg
+            except:
+                description = ''
+
+            if self.output_format in ("type", "all"):
+                if node.search_one('type').arg.lower() in ['empty', 'boolean']:
+                    self.puppet_type(attribute_name, description, ptype='boolean')
+                else:
+                    self.puppet_type(attribute_name, description)
+
+            if self.output_format in ("self_instances", "all"):
                 try:
                     actual_xpath = self.tree.getpath(elem).split(self.naming_seed)[1]
                 except IndexError:
                     actual_xpath = ''
+
                 if actual_xpath != '':
                     actual_xpath = "./" + self.tree.getpath(elem).split(self.naming_seed)[1] + "/" + node.arg
                 else:
                     actual_xpath = node.arg
-                if node.search_one('type').arg.lower() == 'empty':
-                    xpath = "!(variable.xpath(\"{0}\").empty?)".format(actual_xpath)
+
+                if node.search_one('type').arg.lower() == 'boolean':
+                    xpath = "variable.xpath(\"{0}\").text.downcase == 'true' ? true : nil".format(actual_xpath)
+                elif node.search_one('type').arg.lower() == 'empty':
+                    xpath = "!(variable.xpath(\"{0}\").empty?) ? true : nil".format(actual_xpath)
                 else:
                     xpath = "variable.xpath(\"{0}\").text".format(actual_xpath)
-            provider = ":{0}  => ".format(attribute_name)
-            self.fd.write(provider + xpath + ",\n")
 
         if self.output_format in ("flush", "all"):
-            if self.naming_seed == '':
-                attribute_name = node.arg.replace('-', '_')
-            else:
-                try:
-                    prefix = self.tree.getpath(elem).split(self.naming_seed)[1].replace('/', '_')
-                except IndexError:
-                    prefix = ''
-                if prefix != '':
-                    # we are nested
-                    attribute_name = (prefix + "_" + node.arg).replace('-', '_')
-                    # remove leading _
-                    attribute_name = attribute_name[1:]
-                else:
-                    # we are not nested
-                    attribute_name = node.arg.replace('-', '_')
-
-            # pdb.set_trace()
             # We first need to work with the node itself, we do not know the namespace yet
             mm = node.main_module()
             if mm != module:
@@ -306,7 +284,11 @@ class AllPuppetPlugin(plugin.PyangPlugin):
                     name_spaced_path = unique_prefixes(node.main_module().i_ctx)[ns_object] + ':' + parent.tag + '/' + name_spaced_path
 
             # Write out the flush xpaths
-            self.fd.write("\"" + attribute_name + "\" => \"" + name_spaced_path + "\",\n")
+            self.puppet_flush(attribute_name, name_spaced_path)
+
+        if self.output_format in ("self_instances", "all"):
+            # Write the instance
+            self.puppet_instance(attribute_name, xpath)
 
         if node.i_default is None:
             nel, newm, path = self.sample_element(node, elem, module, path)
@@ -394,3 +376,27 @@ class AllPuppetPlugin(plugin.PyangPlugin):
         maxel = node.search_one("max-elements")
         hi = "" if maxel is None else maxel.arg
         elem.insert(0, ET.Comment(" # entries: %s..%s " % (lo, hi)))
+
+    def puppet_type(self, pname, description, ptype='string'):
+        pname = pname.replace('-', '_')
+        description = description.replace('\n', ' ').replace("\'", "\\'")
+        # This is probably broken - reverting to old style for now.
+        if ptype == 'boolean':
+  #           self.fd.write("""  newproperty(:{0}, :boolean => true, :parent => Puppet::Property::Boolean) do
+  #   desc '{1}'
+  # end\n""".format(pname, description))
+            self.fd.write("""  newproperty(:{0}) do
+    desc '{1}'
+  end\n""".format(pname, description))
+        else:
+            self.fd.write("""  newproperty(:{0}) do
+    desc '{1}'
+  end\n""".format(pname, description))
+
+    def puppet_instance(self, pname, xpath):
+        provider = ":{0}  => ".format(pname.replace('-', '_'))
+        self.fd.write(provider + xpath + ",\n")
+
+    def puppet_flush(self, pname, xpath):
+        pname = pname.replace('-', '_')
+        self.fd.write("\"" + pname + "\" => \"" + xpath + "\",\n")
