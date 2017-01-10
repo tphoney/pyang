@@ -155,17 +155,17 @@ class AllPuppetPlugin(plugin.PyangPlugin):
             print '\n\n**Flush namespace hash**'
             print '{ ' + ', '.join(x for x in comp) + ' }'
 
-    def ignore(self, node, elem, module, path):
+    def ignore(self, node, elem, module, path, mode=None):
         """Do nothing for `node`."""
         pass
 
-    def process_children(self, node, elem, module, path):
+    def process_children(self, node, elem, module, path, mode=None):
         """Proceed with all children of `node`."""
         for ch in node.i_children:
             if ch.i_config or self.doctype == "data":
-                self.node_handler[ch.keyword](ch, elem, module, path)
+                self.node_handler[ch.keyword](ch, elem, module, path, mode=mode)
 
-    def container(self, node, elem, module, path):
+    def container(self, node, elem, module, path, mode=None):
         """Create a sample container element and proceed with its children."""
         # pdb.set_trace()
         nel, newm, path = self.sample_element(node, elem, module, path)
@@ -178,9 +178,9 @@ class AllPuppetPlugin(plugin.PyangPlugin):
             pres = node.search_one("presence")
             if pres is not None:
                 nel.append(ET.Comment(" presence: %s " % pres.arg))
-        self.process_children(node, nel, newm, path)
+        self.process_children(node, nel, newm, path, mode=mode)
 
-    def leaf(self, node, elem, module, path):
+    def leaf(self, node, elem, module, path, mode=None):
         """Create a sample leaf element."""
         if self.naming_seed == '':
             attribute_name = node.arg
@@ -193,17 +193,17 @@ class AllPuppetPlugin(plugin.PyangPlugin):
                 if self.output_format in ("self_instances", "all"):
                     xpath = "variable.xpath(\"{0}/{1}\").text.downcase == 'true' ? true : nil".format(self.tree.getpath(elem), node.arg)
                 if self.output_format in ("type", "all"):
-                    self.puppet_type(node.arg, description, ptype='boolean')
+                    self.puppet_type(node.arg, description, ptype='boolean', mode=mode)
             elif node.search_one('type').arg.lower() == 'empty':
                 if self.output_format in ("self_instances", "all"):
                     xpath = "!(variable.xpath(\"{0}/{1}\").empty?) ? true : nil".format(self.tree.getpath(elem), node.arg)
                 if self.output_format in ("type", "all"):
-                    self.puppet_type(node.arg, description, ptype='boolean')
+                    self.puppet_type(node.arg, description, ptype='boolean', mode=mode)
             else:
                 if self.output_format in ("self_instances", "all"):
                     xpath = "variable.xpath(\"{0}/{1}\").text".format(self.tree.getpath(elem), node.arg)
                 if self.output_format in ("type", "all"):
-                    self.puppet_type(node.arg, description)
+                    self.puppet_type(node.arg, description, mode=mode)
 
         else:
             try:
@@ -225,9 +225,9 @@ class AllPuppetPlugin(plugin.PyangPlugin):
 
             if self.output_format in ("type", "all"):
                 if node.search_one('type').arg.lower() in ['empty', 'boolean']:
-                    self.puppet_type(attribute_name, description, ptype='boolean')
+                    self.puppet_type(attribute_name, description, ptype='boolean', mode=mode)
                 else:
-                    self.puppet_type(attribute_name, description)
+                    self.puppet_type(attribute_name, description, mode=mode)
 
             if self.output_format in ("self_instances", "all"):
                 try:
@@ -302,7 +302,7 @@ class AllPuppetPlugin(plugin.PyangPlugin):
                 return
             nel.text = str(node.i_default)
 
-    def anyxml(self, node, elem, module, path):
+    def anyxml(self, node, elem, module, path, mode=None):
         """Create a sample anyxml element."""
         nel, newm, path = self.sample_element(node, elem, module, path)
         if path is None:
@@ -310,26 +310,31 @@ class AllPuppetPlugin(plugin.PyangPlugin):
         if self.annots:
             nel.append(ET.Comment(" anyxml "))
 
-    def list(self, node, elem, module, path):
+    def list(self, node, elem, module, path, mode='pcore'):
         """Create sample entries of a list."""
         nel, newm, path = self.sample_element(node, elem, module, path)
         if path is None:
             return
-        self.process_children(node, nel, newm, path)
+        self.fd.write('''type Vanilla_ice::{0} = Object[{{
+  attributes => {{\n'''.format(node.arg.replace('-', '_').capitalize()))
+        self.process_children(node, nel, newm, path, mode='pcore')
         minel = node.search_one("min-elements")
         self.add_copies(node, elem, nel, minel)
         self.list_comment(node, nel, minel)
+        self.fd.write("}}]\n")
 
-    def leaf_list(self, node, elem, module, path):
+    def leaf_list(self, node, elem, module, path, mode=None):
         """Create sample entries of a leaf-list."""
         nel, newm, path = self.sample_element(node, elem, module, path)
         if path is None:
             return
+        self.fd.write('''type Vanilla_ice::{0} = Object[{{
+  attributes => {{\n'''.format(node.arg.replace('-', '_').capitalize()))
         minel = node.search_one("min-elements")
         self.add_copies(node, elem, nel, minel)
         self.list_comment(node, nel, minel)
 
-    def sample_element(self, node, parent, module, path):
+    def sample_element(self, node, parent, module, path, mode=None):
         """Create element under `parent`.
 
         Declare new namespace if necessary.
@@ -377,21 +382,24 @@ class AllPuppetPlugin(plugin.PyangPlugin):
         hi = "" if maxel is None else maxel.arg
         elem.insert(0, ET.Comment(" # entries: %s..%s " % (lo, hi)))
 
-    def puppet_type(self, pname, description, ptype='string'):
+    def puppet_type(self, pname, description, ptype='string', mode=None):
         pname = pname.replace('-', '_')
         description = description.replace('\n', ' ').replace("\'", "\\'")
-        # This is probably broken - reverting to old style for now.
-        if ptype == 'boolean':
-  #           self.fd.write("""  newproperty(:{0}, :boolean => true, :parent => Puppet::Property::Boolean) do
-  #   desc '{1}'
-  # end\n""".format(pname, description))
-            self.fd.write("""  newproperty(:{0}) do
-    desc '{1}'
-  end\n""".format(pname, description))
+        if mode == 'pcore':
+            self.fd.write("    {0} => Optional[String],\n".format(pname))
         else:
-            self.fd.write("""  newproperty(:{0}) do
-    desc '{1}'
-  end\n""".format(pname, description))
+            # This is probably broken - reverting to old style for now.
+            if ptype == 'boolean':
+      #           self.fd.write("""  newproperty(:{0}, :boolean => true, :parent => Puppet::Property::Boolean) do
+      #   desc '{1}'
+      # end\n""".format(pname, description))
+                self.fd.write("""  newproperty(:{0}) do
+        desc '{1}'
+      end\n""".format(pname, description))
+            else:
+                self.fd.write("""  newproperty(:{0}) do
+        desc '{1}'
+      end\n""".format(pname, description))
 
     def puppet_instance(self, pname, xpath):
         provider = ":{0}  => ".format(pname.replace('-', '_'))
