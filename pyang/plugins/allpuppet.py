@@ -186,7 +186,7 @@ class AllPuppetPlugin(plugin.PyangPlugin):
             pres = node.search_one("presence")
             if pres is not None:
                 nel.append(ET.Comment(" presence: %s " % pres.arg))
-        self.process_children(node, nel, newm, path, mode=mode)
+        self.process_children(node, nel, newm, path, mode=mode, type_writer=type_writer)
 
     def leaf(self, node, elem, module, path, mode=None, type_writer=None):
         """Create a sample leaf element."""
@@ -214,15 +214,22 @@ class AllPuppetPlugin(plugin.PyangPlugin):
                     self.puppet_type(node.arg, description, mode=mode, type_writer=type_writer)
 
         else:
-            try:
-                prefix = self.tree.getpath(elem).split(self.naming_seed)[1].replace('/', '_')
-            except IndexError:
-                prefix = ''
+            if type_writer:
+                try:
+                    prefix = elem.tag.replace('/', '_')
+                except IndexError:
+                    prefix = ''
+            else:
+                try:
+                    prefix = self.tree.getpath(elem).split(self.naming_seed)[1].replace('/', '_')
+                except IndexError:
+                    prefix = ''
             if prefix != '':
+                #pdb.set_trace()
                 # we are nested
                 attribute_name = (prefix + "_" + node.arg)
-                # remove leading _
-                attribute_name = attribute_name[1:]
+                # remove leading underscore
+                attribute_name = attribute_name.lstrip('_')
             else:
                 # we are not nested
                 attribute_name = node.arg
@@ -233,7 +240,7 @@ class AllPuppetPlugin(plugin.PyangPlugin):
 
             if self.output_format in ("type", "all"):
                 # Throwing in some super hack to omit name seeds in pcore
-                attribute_name = node.arg if type_writer else attribute_name
+                #attribute_name = node.arg if type_writer else attribute_name
                 if node.search_one('type').arg.lower() in ['empty', 'boolean']:
                     self.puppet_type(attribute_name, description, ptype='boolean', mode=mode, type_writer=type_writer)
                 else:
