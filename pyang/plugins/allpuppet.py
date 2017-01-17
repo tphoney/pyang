@@ -122,7 +122,7 @@ class AllPuppetPlugin(plugin.PyangPlugin):
             "container": self.container,
             "leaf": self.leaf,
             "anyxml": self.anyxml,
-            "choice": self.process_children,
+            "choice": self.choice,
             "case": self.process_children,
             "list": self.list,
             "leaf-list": self.leaf_list,
@@ -170,6 +170,7 @@ class AllPuppetPlugin(plugin.PyangPlugin):
     def process_children(self, node, elem, module, path, mode=None, type_writer=None):
         """Proceed with all children of `node`."""
         for ch in node.i_children:
+            self.fd.write("process_children raw_keyword  {0}\n".format(ch.raw_keyword))
             if ch.i_config or self.doctype == "data":
                 self.node_handler[ch.keyword](ch, elem, module, path, mode=mode, type_writer=type_writer)
 
@@ -346,6 +347,34 @@ class AllPuppetPlugin(plugin.PyangPlugin):
         type_writer = StringIO.StringIO()
         #pdb.set_trace()
         type_writer.write('''type Vanilla_ice::{0} = Object[{{
+  attributes => {{\n'''.format(node_name.capitalize()))
+        self.process_children(node, nel, newm, path, mode='pcore', type_writer=type_writer)
+        minel = node.search_one("min-elements")
+        self.add_copies(node, elem, nel, minel)
+        self.list_comment(node, nel, minel)
+        type_writer.write("}}]\n")
+        self.pcore_types.append(type_writer)
+
+    def choice(self, node, elem, module, path, mode='pcore', type_writer=None):
+        """Create sample entries of a list."""
+        nel, newm, path = self.sample_element(node, elem, module, path)
+        if path is None:
+            return
+        node_name = node.arg.replace('-', '_')
+        self.fd.write("choice node_name {0}\n".format(node_name))
+        if type_writer:
+            type_writer.write("    {0} => Optional[Array[Vanilla_ice::{1}]],\n".format(node_name, node_name.capitalize()))
+        else:
+            try:
+                description = node.search_one('description').arg
+            except:
+                description = ''
+            self.fd.write("""  newproperty(:{0}, :array_matching => :all) do
+    desc '{1}'
+  end \n""".format(node_name, description.replace('\n', ' ').replace("\'", "\\'")))
+        type_writer = StringIO.StringIO()
+        #pdb.set_trace()
+        type_writer.write('''type PICK_ONE Vanilla_ice::{0} = Object[{{
   attributes => {{\n'''.format(node_name.capitalize()))
         self.process_children(node, nel, newm, path, mode='pcore', type_writer=type_writer)
         minel = node.search_one("min-elements")
