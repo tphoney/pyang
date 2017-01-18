@@ -37,6 +37,7 @@ import optparse
 import copy
 import pdb
 import StringIO
+import shutil
 
 from lxml import etree as ET
 from pyang import plugin, statements, error
@@ -77,6 +78,9 @@ class AllPuppetPlugin(plugin.PyangPlugin):
             optparse.make_option("--allpuppet-path",
                                  dest="sample_path",
                                  help="Subtree to print"),
+            optparse.make_option("--pcore-path",
+                                 dest="pcore_path",
+                                 help="Folder to output pcore files"),
         ]
         g = optparser.add_option_group(
             "allpuppet output specific options")
@@ -122,7 +126,8 @@ class AllPuppetPlugin(plugin.PyangPlugin):
             "container": self.container,
             "leaf": self.leaf,
             "anyxml": self.anyxml,
-            "choice": self.choice,
+            #"choice": self.choice,
+            "choice": self.process_children,
             "case": self.process_children,
             "list": self.list,
             "leaf-list": self.leaf_list,
@@ -130,6 +135,19 @@ class AllPuppetPlugin(plugin.PyangPlugin):
             "notification": self.ignore
         }
         self.ns_uri = {}
+        # Map built in YANG primatives to Puppet
+        self.yang_type = {
+            "int8": "Integer",
+            "int16": "Integer",
+            "int32": "Integer",
+            "int64": "Integer",
+            "uint8": "Integer",
+            "uint16": "Integer",
+            "uint32": "Integer",
+            "uint64": "Integer",
+            "decimal64": "Float",
+            "boolean": "Boolean"
+        }
         for yam in modules:
             self.ns_uri[yam] = yam.search_one("namespace").arg
         # Build dictionary of all namespaces
@@ -161,7 +179,13 @@ class AllPuppetPlugin(plugin.PyangPlugin):
         elif self.output_format in ("type", "all"):
             self.fd.write("\n\n**pcore types**\n")
             for type_writer in self.pcore_types:
-                self.fd.write("{0}\n".format(type_writer.getvalue()))
+                if ctx.opts.pcore_path:
+                    fname = "{0}/{1}.pp".format(ctx.opts.pcore_path, type_writer[0])
+                    with open (fname, 'w') as of:
+                        buf = type_writer[1]
+                        buf.seek (0)
+                        shutil.copyfileobj (buf, of)
+                self.fd.write("{0}\n".format(type_writer[1].getvalue()))
 
     def ignore(self, node, elem, module, path, mode=None, type_writer=None):
         """Do nothing for `node`."""
@@ -170,7 +194,7 @@ class AllPuppetPlugin(plugin.PyangPlugin):
     def process_children(self, node, elem, module, path, mode=None, type_writer=None):
         """Proceed with all children of `node`."""
         for ch in node.i_children:
-            self.fd.write("process_children raw_keyword  {0}\n".format(ch.raw_keyword))
+            #self.fd.write("process_children raw_keyword  {0}\n".format(ch.raw_keyword))
             if ch.i_config or self.doctype == "data":
                 self.node_handler[ch.keyword](ch, elem, module, path, mode=mode, type_writer=type_writer)
 
@@ -178,16 +202,29 @@ class AllPuppetPlugin(plugin.PyangPlugin):
         """Create a sample container element and proceed with its children."""
         # pdb.set_trace()
         nel, newm, path = self.sample_element(node, elem, module, path)
+        node_name = nel.tag.replace('-', '_')
+        # If this is a top level container it should be a Puppet resource type
         if elem.tag == "data":
             if self.output_format in ("type", "all"):
-                self.fd.write("""Puppet::Type.newtype(:{0}) do\n""".format(nel.tag.replace('-', '_')))
+                self.fd.write("""Puppet::Type.newtype(:{0}) do\n""".format(node_name))
+
+        if type_writer:
+            #type_writer.write("**    {0} => Optional[Vanilla_ice::{1}],\n".format(node_name, node_name.capitalize()))
+            type_writer.write("    {0} => Optional[Vanilla_ice::{1}],\n".format(node_name, node_name.capitalize()))
+        type_writer = StringIO.StringIO()
+        type_writer.write('''type Vanilla_ice::{0} = Object[{{
+  attributes => {{\n'''.format(node_name.capitalize()))
         if path is None:
+            type_writer.write("}}]\n")
+            self.pcore_types.append((node_name, type_writer))
             return
         if self.annots:
             pres = node.search_one("presence")
             if pres is not None:
                 nel.append(ET.Comment(" presence: %s " % pres.arg))
         self.process_children(node, nel, newm, path, mode=mode, type_writer=type_writer)
+        type_writer.write("}}]\n")
+        self.pcore_types.append((node_name, type_writer))
 
     def leaf(self, node, elem, module, path, mode=None, type_writer=None):
         """Create a sample leaf element."""
@@ -212,7 +249,8 @@ class AllPuppetPlugin(plugin.PyangPlugin):
                 if self.output_format in ("self_instances", "all"):
                     xpath = "variable.xpath(\"{0}/{1}\").text".format(self.tree.getpath(elem), node.arg)
                 if self.output_format in ("type", "all"):
-                    self.puppet_type(node.arg, description, mode=mode, type_writer=type_writer)
+                    ptype = node.search_one('type').arg.lower() or None
+                    self.puppet_type(node.arg, description, ptype=ptype, mode=mode, type_writer=type_writer)
 
         else:
             if type_writer:
@@ -242,10 +280,8 @@ class AllPuppetPlugin(plugin.PyangPlugin):
             if self.output_format in ("type", "all"):
                 # Throwing in some super hack to omit name seeds in pcore
                 #attribute_name = node.arg if type_writer else attribute_name
-                if node.search_one('type').arg.lower() in ['empty', 'boolean']:
-                    self.puppet_type(attribute_name, description, ptype='boolean', mode=mode, type_writer=type_writer)
-                else:
-                    self.puppet_type(attribute_name, description, mode=mode, type_writer=type_writer)
+                ptype = node.search_one('type').arg.lower() or None
+                self.puppet_type(attribute_name, description, ptype=ptype, mode=mode, type_writer=type_writer)
 
             if self.output_format in ("self_instances", "all"):
                 try:
@@ -353,7 +389,7 @@ class AllPuppetPlugin(plugin.PyangPlugin):
         self.add_copies(node, elem, nel, minel)
         self.list_comment(node, nel, minel)
         type_writer.write("}}]\n")
-        self.pcore_types.append(type_writer)
+        self.pcore_types.append((node_name, type_writer))
 
     def choice(self, node, elem, module, path, mode='pcore', type_writer=None):
         """Create sample entries of a list."""
@@ -374,14 +410,14 @@ class AllPuppetPlugin(plugin.PyangPlugin):
   end \n""".format(node_name, description.replace('\n', ' ').replace("\'", "\\'")))
         type_writer = StringIO.StringIO()
         #pdb.set_trace()
-        type_writer.write('''type PICK_ONE Vanilla_ice::{0} = Object[{{
+        type_writer.write('''type Vanilla_ice::{0} = Object[{{
   attributes => {{\n'''.format(node_name.capitalize()))
         self.process_children(node, nel, newm, path, mode='pcore', type_writer=type_writer)
         minel = node.search_one("min-elements")
         self.add_copies(node, elem, nel, minel)
         self.list_comment(node, nel, minel)
         type_writer.write("}}]\n")
-        self.pcore_types.append(type_writer)
+        self.pcore_types.append((node_name, type_writer))
 
     def leaf_list(self, node, elem, module, path, mode=None, type_writer=None):
         """Create sample entries of a leaf-list."""
@@ -445,22 +481,17 @@ class AllPuppetPlugin(plugin.PyangPlugin):
         hi = "" if maxel is None else maxel.arg
         elem.insert(0, ET.Comment(" # entries: %s..%s " % (lo, hi)))
 
-    def puppet_type(self, pname, description, ptype='string', mode=None, type_writer=None):
+    def puppet_type(self, pname, description, ptype=None, mode=None, type_writer=None):
+        try:
+            ptype = self.yang_type[ptype]
+        except:
+            ptype = 'String'
         pname = pname.replace('-', '_')
         description = description.replace('\n', ' ').replace("\'", "\\'")
         if type_writer:
-            type_writer.write("    {0} => Optional[String],\n".format(pname))
+            type_writer.write("    {0} => Optional[{1}],\n".format(pname, ptype))
         else:
-            # This is probably broken - reverting to old style for now.
-            if ptype == 'boolean':
-      #           self.fd.write("""  newproperty(:{0}, :boolean => true, :parent => Puppet::Property::Boolean) do
-      #   desc '{1}'
-      # end\n""".format(pname, description))
-                self.fd.write("""  newproperty(:{0}) do
-        desc '{1}'
-      end\n""".format(pname, description))
-            else:
-                self.fd.write("""  newproperty(:{0}) do
+            self.fd.write("""  newproperty(:{0}) do
         desc '{1}'
       end\n""".format(pname, description))
 
