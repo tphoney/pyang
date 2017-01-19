@@ -207,24 +207,26 @@ class AllPuppetPlugin(plugin.PyangPlugin):
         if elem.tag == "data":
             if self.output_format in ("type", "all"):
                 self.fd.write("""Puppet::Type.newtype(:{0}) do\n""".format(node_name))
-
-        if type_writer:
-            #type_writer.write("**    {0} => Optional[Vanilla_ice::{1}],\n".format(node_name, node_name.capitalize()))
-            type_writer.write("    {0} => Optional[Vanilla_ice::{1}],\n".format(node_name, node_name.capitalize()))
-        type_writer = StringIO.StringIO()
-        type_writer.write('''type Vanilla_ice::{0} = Object[{{
+            if path is None:
+                return
+            self.process_children(node, nel, newm, path, mode=mode, type_writer=type_writer)
+        else:
+            if type_writer:
+                type_writer.write("    {0} => Optional[Vanilla_ice::{1}],\n".format(node_name, node_name.capitalize()))
+            type_writer = StringIO.StringIO()
+            type_writer.write('''type Vanilla_ice::{0} = Object[{{
   attributes => {{\n'''.format(node_name.capitalize()))
-        if path is None:
+            if path is None:
+                type_writer.write("}}]\n")
+                self.pcore_types.append((node_name, type_writer))
+                return
+            if self.annots:
+                pres = node.search_one("presence")
+                if pres is not None:
+                    nel.append(ET.Comment(" presence: %s " % pres.arg))
+            self.process_children(node, nel, newm, path, mode=mode, type_writer=type_writer)
             type_writer.write("}}]\n")
             self.pcore_types.append((node_name, type_writer))
-            return
-        if self.annots:
-            pres = node.search_one("presence")
-            if pres is not None:
-                nel.append(ET.Comment(" presence: %s " % pres.arg))
-        self.process_children(node, nel, newm, path, mode=mode, type_writer=type_writer)
-        type_writer.write("}}]\n")
-        self.pcore_types.append((node_name, type_writer))
 
     def leaf(self, node, elem, module, path, mode=None, type_writer=None):
         """Create a sample leaf element."""
@@ -486,7 +488,7 @@ class AllPuppetPlugin(plugin.PyangPlugin):
             ptype = self.yang_type[ptype]
         except:
             ptype = 'String'
-        pname = pname.replace('-', '_')
+        pname = pname.replace('-', '_').lower()
         description = description.replace('\n', ' ').replace("\'", "\\'")
         if type_writer:
             type_writer.write("    {0} => Optional[{1}],\n".format(pname, ptype))
