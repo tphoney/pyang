@@ -126,10 +126,9 @@ class AllPuppetPlugin(plugin.PyangPlugin):
             "rpc": self.ignore,
             "notification": self.ignore
         }
-        self.ns_uri = {}
-        for yam in modules:
-            self.ns_uri[yam] = yam.search_one("namespace").arg
-        # Build dictionary of all namespaces
+        # Find the namespaces for all modules, not just top level
+        self.ns_uri = {statement: statement.search_one("namespace").arg for statement, prefix in unique_prefixes(ctx).iteritems()}
+        # Build dictionary of all namespaces by prefix
         self.nsmap = {unique_prefixes(ctx)[k]: v for k, v in self.ns_uri.iteritems()}
         # nsmap[None] = "urn:ietf:params:xml:ns:netconf:base:1.0"
         self.top = ET.Element(self.doctype,
