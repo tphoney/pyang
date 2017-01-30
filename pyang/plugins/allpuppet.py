@@ -78,9 +78,15 @@ class AllPuppetPlugin(plugin.PyangPlugin):
             optparse.make_option("--allpuppet-path",
                                  dest="sample_path",
                                  help="Subtree to print"),
+            optparse.make_option("--module-name",
+                                 dest="module_name",
+                                 help="Name of Puppet Module"),
             optparse.make_option("--pcore-path",
                                  dest="pcore_path",
                                  help="Folder to output pcore files"),
+            optparse.make_option("--pcore-name",
+                                 dest="pcore_name",
+                                 help="Name of pcore TypeSet"),
         ]
         g = optparser.add_option_group(
             "allpuppet output specific options")
@@ -122,6 +128,11 @@ class AllPuppetPlugin(plugin.PyangPlugin):
         self.fd = fd
         #self.type_writer = StringIO.StringIO()
         self.pcore_types = []
+        # Attempt to setup the Puppet module name and Pcore type info
+        self.module_name = ctx.opts.module_name.capitalize() if ctx.opts.module_name else "Vanilla_ice"
+        self.pcore_name = ctx.opts.pcore_name
+        if self.pcore_name:
+            self.module_name = self.module_name + "::" + self.pcore_name.capitalize()
         self.node_handler = {
             "container": self.container,
             "leaf": self.leaf,
@@ -179,7 +190,10 @@ class AllPuppetPlugin(plugin.PyangPlugin):
             self.fd.write("\n\n**pcore types**\n")
             for type_writer in self.pcore_types:
                 if ctx.opts.pcore_path:
-                    fname = "{0}/{1}.pp".format(ctx.opts.pcore_path, type_writer[0])
+                    directory = ctx.opts.pcore_path + '/' + self.pcore_name if self.pcore_name else ctx.opts.pcore_path
+                    if not os.path.exists(directory):
+                        os.makedirs(directory)
+                    fname = "{0}/{1}.pp".format(directory, type_writer[0])
                     with open (fname, 'w') as of:
                         buf = type_writer[1]
                         buf.seek (0)
@@ -211,10 +225,10 @@ class AllPuppetPlugin(plugin.PyangPlugin):
             self.process_children(node, nel, newm, path, mode=mode, type_writer=type_writer)
         else:
             if type_writer:
-                type_writer.write("    {0} => Optional[Vanilla_ice::{1}],\n".format(node_name, node_name.capitalize()))
+                type_writer.write("    {0} => Optional[{1}::{2}],\n".format(node_name, self.module_name, node_name.capitalize()))
             type_writer = StringIO.StringIO()
-            type_writer.write('''type Vanilla_ice::{0} = Object[{{
-  attributes => {{\n'''.format(node_name.capitalize()))
+            type_writer.write('''type {0}::{1} = Object[{{
+  attributes => {{\n'''.format(self.module_name, node_name.capitalize()))
             if path is None:
                 type_writer.write("}}]\n")
                 self.pcore_types.append((node_name, type_writer))
@@ -372,7 +386,7 @@ class AllPuppetPlugin(plugin.PyangPlugin):
             return
         node_name = node.arg.replace('-', '_')
         if type_writer:
-            type_writer.write("    {0} => Optional[Array[Vanilla_ice::{1}]],\n".format(node_name, node_name.capitalize()))
+            type_writer.write("    {0} => Optional[Array[{1}::{2}]],\n".format(node_name, self.module_name, node_name.capitalize()))
         else:
             try:
                 description = node.search_one('description').arg
@@ -383,8 +397,8 @@ class AllPuppetPlugin(plugin.PyangPlugin):
   end \n""".format(node_name, description.replace('\n', ' ').replace("\'", "\\'")))
         type_writer = StringIO.StringIO()
         #pdb.set_trace()
-        type_writer.write('''type Vanilla_ice::{0} = Object[{{
-  attributes => {{\n'''.format(node_name.capitalize()))
+        type_writer.write('''type {0}::{1} = Object[{{
+  attributes => {{\n'''.format(self.module_name, node_name.capitalize()))
         self.process_children(node, nel, newm, path, mode='pcore', type_writer=type_writer)
         minel = node.search_one("min-elements")
         self.add_copies(node, elem, nel, minel)
@@ -400,7 +414,7 @@ class AllPuppetPlugin(plugin.PyangPlugin):
         node_name = node.arg.replace('-', '_')
         self.fd.write("choice node_name {0}\n".format(node_name))
         if type_writer:
-            type_writer.write("    {0} => Optional[Array[Vanilla_ice::{1}]],\n".format(node_name, node_name.capitalize()))
+            type_writer.write("    {0} => Optional[Array[{1}::{2}]],\n".format(node_name, self.module_name, node_name.capitalize()))
         else:
             try:
                 description = node.search_one('description').arg
@@ -411,8 +425,8 @@ class AllPuppetPlugin(plugin.PyangPlugin):
   end \n""".format(node_name, description.replace('\n', ' ').replace("\'", "\\'")))
         type_writer = StringIO.StringIO()
         #pdb.set_trace()
-        type_writer.write('''type Vanilla_ice::{0} = Object[{{
-  attributes => {{\n'''.format(node_name.capitalize()))
+        type_writer.write('''type {0}::{1} = Object[{{
+  attributes => {{\n'''.format(self.module_name, node_name.capitalize()))
         self.process_children(node, nel, newm, path, mode='pcore', type_writer=type_writer)
         minel = node.search_one("min-elements")
         self.add_copies(node, elem, nel, minel)
