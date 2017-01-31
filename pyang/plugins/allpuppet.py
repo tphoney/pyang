@@ -166,7 +166,10 @@ class AllPuppetPlugin(plugin.PyangPlugin):
         self.top = ET.Element(self.doctype,
                               {"xmlns": "urn:ietf:params:xml:ns:netconf:base:1.0"})
         self.tree = ET.ElementTree(self.top)
-        # pdb.set_trace()
+
+        # Get the list of namespaces and their prefix
+        self.namespace_hash = ["'{0}' => '{1}'".format(k, v) for k, v in self.nsmap.iteritems()]
+        #pdb.set_trace()
         for yam in modules:
             self.process_children(yam, self.top, None, path)
 
@@ -179,12 +182,9 @@ class AllPuppetPlugin(plugin.PyangPlugin):
             else:
                 self.tree.write(fd, encoding="UTF-8")
 
-            # Get the dictionary of namespaces and their prefix
-            # pdb.set_trace()
-            comp = ["'{0}' => '{1}'".format(k, v) for k, v in self.nsmap.iteritems()]
             # Output the ruby hash of namespaces
             print '\n\n**Flush namespace hash**'
-            print '{ ' + ', '.join(x for x in comp) + ' }'
+            print '{ ' + ', '.join(x for x in self.namespace_hash) + ' }'
 
         elif self.output_format in ("type", "all"):
             self.fd.write("\n\n**pcore types**\n")
@@ -230,6 +230,7 @@ class AllPuppetPlugin(plugin.PyangPlugin):
             type_writer.write('''type {0}::{1} = Object[{{
   attributes => {{\n'''.format(self.module_name, node_name.capitalize()))
             if path is None:
+                type_writer.write("    xmlns => {{type => String, value => \"{0}\", kind => constant}},\n".format(nel.attrib['xmlns']))
                 type_writer.write("}}]\n")
                 self.pcore_types.append((node_name, type_writer))
                 return
@@ -238,6 +239,8 @@ class AllPuppetPlugin(plugin.PyangPlugin):
                 if pres is not None:
                     nel.append(ET.Comment(" presence: %s " % pres.arg))
             self.process_children(node, nel, newm, path, mode=mode, type_writer=type_writer)
+            #pdb.set_trace()
+            type_writer.write("    xmlns => {{type => String, value => \"{0}\", kind => constant}},\n".format(nel.attrib['xmlns']))
             type_writer.write("}}]\n")
             self.pcore_types.append((node_name, type_writer))
 
@@ -403,6 +406,7 @@ class AllPuppetPlugin(plugin.PyangPlugin):
         minel = node.search_one("min-elements")
         self.add_copies(node, elem, nel, minel)
         self.list_comment(node, nel, minel)
+        type_writer.write("    xmlns => {{type => String, value => \"{0}\", kind => constant}},\n".format(nel.attrib['xmlns']))
         type_writer.write("}}]\n")
         self.pcore_types.append((node_name, type_writer))
 
@@ -431,6 +435,7 @@ class AllPuppetPlugin(plugin.PyangPlugin):
         minel = node.search_one("min-elements")
         self.add_copies(node, elem, nel, minel)
         self.list_comment(node, nel, minel)
+        type_writer.write("    xmlns => {{type => String, value => \"{0}\", kind => constant}},\n".format(nel.attrib['xmlns']))
         type_writer.write("}}]\n")
         self.pcore_types.append((node_name, type_writer))
 
