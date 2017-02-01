@@ -176,11 +176,11 @@ class AllPuppetPlugin(plugin.PyangPlugin):
         if self.output_format in ("flush", "all"):
             print '\n**Flush XML Template**'
             if sys.version > "3":
-                self.tree.write(fd, encoding="unicode", xml_declaration=True)
+                self.tree.write(fd, encoding="unicode", xml_declaration=True, pretty_print=True)
             elif sys.version > "2.7":
-                self.tree.write(fd, encoding="UTF-8", xml_declaration=True)
+                self.tree.write(fd, encoding="UTF-8", xml_declaration=True, pretty_print=True)
             else:
-                self.tree.write(fd, encoding="UTF-8")
+                self.tree.write(fd, encoding="UTF-8", pretty_print=True)
 
             # Output the ruby hash of namespaces
             print '\n\n**Flush namespace hash**'
