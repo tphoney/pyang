@@ -126,7 +126,6 @@ class AllPuppetPlugin(plugin.PyangPlugin):
         self.annots = ctx.opts.sample_annots
         self.defaults = ctx.opts.sample_defaults
         self.fd = fd
-        #self.type_writer = StringIO.StringIO()
         self.pcore_types = []
         # Attempt to setup the Puppet module name and Pcore type info
         self.module_name = ctx.opts.module_name.capitalize() if ctx.opts.module_name else "Vanilla_ice"
@@ -188,63 +187,77 @@ class AllPuppetPlugin(plugin.PyangPlugin):
 
         elif self.output_format in ("type", "all"):
             self.fd.write("\n\n**pcore types**\n")
-            for type_writer in self.pcore_types:
+            for pcore_type in self.pcore_types:
                 if ctx.opts.pcore_path:
                     directory = ctx.opts.pcore_path + '/' + self.pcore_name if self.pcore_name else ctx.opts.pcore_path
+                    # pcore files are lowercase
+                    directory = directory.lower()
                     if not os.path.exists(directory):
                         os.makedirs(directory)
-                    fname = "{0}/{1}.pp".format(directory, type_writer[0])
+                    fname = "{0}/{1}.pp".format(directory, pcore_type[0])
                     with open (fname, 'w') as of:
-                        buf = type_writer[1]
+                        buf = pcore_type[1]
                         buf.seek (0)
                         shutil.copyfileobj (buf, of)
-                self.fd.write("{0}\n".format(type_writer[1].getvalue()))
+                self.fd.write("{0}\n".format(pcore_type[1].getvalue()))
 
-    def ignore(self, node, elem, module, path, mode=None, type_writer=None):
+    def ignore(self, node, elem, module, path, type_writer=None):
         """Do nothing for `node`."""
         pass
 
-    def process_children(self, node, elem, module, path, mode=None, type_writer=None):
+    def process_children(self, node, elem, module, path, type_writer=None):
         """Proceed with all children of `node`."""
         for ch in node.i_children:
             #self.fd.write("process_children raw_keyword  {0}\n".format(ch.raw_keyword))
             if ch.i_config or self.doctype == "data":
-                self.node_handler[ch.keyword](ch, elem, module, path, mode=mode, type_writer=type_writer)
+                self.node_handler[ch.keyword](ch, elem, module, path, type_writer=type_writer)
 
-    def container(self, node, elem, module, path, mode=None, type_writer=None):
+    def container(self, node, elem, module, path, type_writer=None):
         """Create a sample container element and proceed with its children."""
         # pdb.set_trace()
         nel, newm, path = self.sample_element(node, elem, module, path)
-        node_name = nel.tag.replace('-', '_')
+        node_name = nel.tag.replace('-', '_').lower()
         # If this is a top level container it should be a Puppet resource type
         if elem.tag == "data":
             if self.output_format in ("type", "all"):
                 self.fd.write("""Puppet::Type.newtype(:{0}) do\n""".format(node_name))
             if path is None:
                 return
-            self.process_children(node, nel, newm, path, mode=mode, type_writer=type_writer)
+            self.process_children(node, nel, newm, path, type_writer=type_writer)
         else:
             if type_writer:
-                type_writer.write("    {0} => Optional[{1}::{2}],\n".format(node_name, self.module_name, node_name.capitalize()))
-            type_writer = StringIO.StringIO()
-            type_writer.write('''type {0}::{1} = Object[{{
+                type_writer[0].write("    {0} => Optional[{1}::{2}],\n".format(node_name, self.module_name, node_name.capitalize()))
+                if node_name != node.arg:
+                    type_writer[1][node_name] = node.arg
+            type_writer = [StringIO.StringIO(), {}]
+            type_writer[0].write('''type {0}::{1} = Object[{{
   attributes => {{\n'''.format(self.module_name, node_name.capitalize()))
             if path is None:
-                type_writer.write("    xmlns => {{type => String, value => \"{0}\", kind => constant}},\n".format(nel.attrib['xmlns']))
-                type_writer.write("}}]\n")
-                self.pcore_types.append((node_name, type_writer))
+                # If there are xml node mappings write them into the main type_writer and collapse it.
+                if len(type_writer[1]) > 0:
+                    type_writer[0].write('    xml_mapping => {type => Hash[String,String], value => { ' +
+                                         ', '.join(x for x in ["'{0}' => '{1}'".format(k, v) for k, v in type_writer[1].items()]) +
+                                         ' }, kind => constant},\n')
+                type_writer[0].write("    xmlns => {{type => String, value => \"{0}\", kind => constant}},\n".format(nel.attrib['xmlns']))
+                type_writer[0].write("}}]\n")
+                self.pcore_types.append((node_name, type_writer[0]))
                 return
             if self.annots:
                 pres = node.search_one("presence")
                 if pres is not None:
                     nel.append(ET.Comment(" presence: %s " % pres.arg))
-            self.process_children(node, nel, newm, path, mode=mode, type_writer=type_writer)
-            #pdb.set_trace()
-            type_writer.write("    xmlns => {{type => String, value => \"{0}\", kind => constant}},\n".format(nel.attrib['xmlns']))
-            type_writer.write("}}]\n")
-            self.pcore_types.append((node_name, type_writer))
+            self.process_children(node, nel, newm, path, type_writer=type_writer)
+            # If there are xml node mappings write them into the main type_writer and collapse it.
+            if len(type_writer[1]) > 0:
+                type_writer[0].write('    xml_mapping => {type => Hash[String,String], value => { ' +
+                                     ', '.join(x for x in ["'{0}' => '{1}'".format(k, v) for k, v in type_writer[1].items()]) +
+                                     ' }, kind => constant},\n')
+            # Add namespace to type
+            type_writer[0].write("    xmlns => {{type => String, value => \"{0}\", kind => constant}},\n".format(nel.attrib['xmlns']))
+            type_writer[0].write("}}]\n")
+            self.pcore_types.append((node_name, type_writer[0]))
 
-    def leaf(self, node, elem, module, path, mode=None, type_writer=None):
+    def leaf(self, node, elem, module, path, type_writer=None):
         """Create a sample leaf element."""
         if self.naming_seed == '':
             attribute_name = node.arg
@@ -253,22 +266,17 @@ class AllPuppetPlugin(plugin.PyangPlugin):
             except:
                 description = ''
 
-            if node.search_one('type').arg.lower() == 'boolean':
-                if self.output_format in ("self_instances", "all"):
-                    xpath = "variable.xpath(\"{0}/{1}\").text.downcase == 'true' ? true : nil".format(self.tree.getpath(elem), node.arg)
-                if self.output_format in ("type", "all"):
-                    self.puppet_type(node.arg, description, ptype='boolean', mode=mode, type_writer=type_writer)
-            elif node.search_one('type').arg.lower() == 'empty':
+            if node.search_one('type').arg.lower() == 'empty':
                 if self.output_format in ("self_instances", "all"):
                     xpath = "!(variable.xpath(\"{0}/{1}\").empty?) ? true : nil".format(self.tree.getpath(elem), node.arg)
                 if self.output_format in ("type", "all"):
-                    self.puppet_type(node.arg, description, ptype='boolean', mode=mode, type_writer=type_writer)
+                    self.puppet_type(node, description, ptype='boolean', type_writer=type_writer)
             else:
                 if self.output_format in ("self_instances", "all"):
                     xpath = "variable.xpath(\"{0}/{1}\").text".format(self.tree.getpath(elem), node.arg)
                 if self.output_format in ("type", "all"):
                     ptype = node.search_one('type').arg.lower() or None
-                    self.puppet_type(node.arg, description, ptype=ptype, mode=mode, type_writer=type_writer)
+                    self.puppet_type(node, description, ptype=ptype, type_writer=type_writer)
 
         else:
             if type_writer:
@@ -296,10 +304,8 @@ class AllPuppetPlugin(plugin.PyangPlugin):
                 description = ''
 
             if self.output_format in ("type", "all"):
-                # Throwing in some super hack to omit name seeds in pcore
-                #attribute_name = node.arg if type_writer else attribute_name
                 ptype = node.search_one('type').arg.lower() or None
-                self.puppet_type(attribute_name, description, ptype=ptype, mode=mode, type_writer=type_writer)
+                self.puppet_type(node, description, ptype=ptype, type_writer=type_writer)
 
             if self.output_format in ("self_instances", "all"):
                 try:
@@ -374,7 +380,7 @@ class AllPuppetPlugin(plugin.PyangPlugin):
                 return
             nel.text = str(node.i_default)
 
-    def anyxml(self, node, elem, module, path, mode=None, type_writer=None):
+    def anyxml(self, node, elem, module, path, type_writer=None):
         """Create a sample anyxml element."""
         nel, newm, path = self.sample_element(node, elem, module, path)
         if path is None:
@@ -382,14 +388,16 @@ class AllPuppetPlugin(plugin.PyangPlugin):
         if self.annots:
             nel.append(ET.Comment(" anyxml "))
 
-    def list(self, node, elem, module, path, mode='pcore', type_writer=None):
+    def list(self, node, elem, module, path, type_writer=None):
         """Create sample entries of a list."""
         nel, newm, path = self.sample_element(node, elem, module, path)
         if path is None:
             return
-        node_name = node.arg.replace('-', '_')
+        node_name = node.arg.replace('-', '_').lower()
         if type_writer:
-            type_writer.write("    {0} => Optional[Array[{1}::{2}]],\n".format(node_name, self.module_name, node_name.capitalize()))
+            type_writer[0].write("    {0} => Optional[Array[{1}::{2}]],\n".format(node_name, self.module_name, node_name.capitalize()))
+            if node_name != node.arg:
+                type_writer[1][node_name] = node.arg
         else:
             try:
                 description = node.search_one('description').arg
@@ -398,27 +406,34 @@ class AllPuppetPlugin(plugin.PyangPlugin):
             self.fd.write("""  newproperty(:{0}, :array_matching => :all) do
     desc '{1}'
   end \n""".format(node_name, description.replace('\n', ' ').replace("\'", "\\'")))
-        type_writer = StringIO.StringIO()
+        type_writer = [StringIO.StringIO(), {}]
         #pdb.set_trace()
-        type_writer.write('''type {0}::{1} = Object[{{
+        type_writer[0].write('''type {0}::{1} = Object[{{
   attributes => {{\n'''.format(self.module_name, node_name.capitalize()))
-        self.process_children(node, nel, newm, path, mode='pcore', type_writer=type_writer)
+        self.process_children(node, nel, newm, path, type_writer=type_writer)
         minel = node.search_one("min-elements")
         self.add_copies(node, elem, nel, minel)
         self.list_comment(node, nel, minel)
-        type_writer.write("    xmlns => {{type => String, value => \"{0}\", kind => constant}},\n".format(nel.attrib['xmlns']))
-        type_writer.write("}}]\n")
-        self.pcore_types.append((node_name, type_writer))
+        # If there are xml node mappings write them into the main type_writer and collapse it.
+        if len(type_writer[1]) > 0:
+            type_writer[0].write('    xml_mapping => {type => Hash[String,String], value => { ' +
+                                 ', '.join(x for x in ["'{0}' => '{1}'".format(k, v) for k, v in type_writer[1].items()]) +
+                                 ' }, kind => constant},\n')
+        type_writer[0].write("    xmlns => {{type => String, value => \"{0}\", kind => constant}},\n".format(nel.attrib['xmlns']))
+        type_writer[0].write("}}]\n")
+        self.pcore_types.append((node_name, type_writer[0]))
 
-    def choice(self, node, elem, module, path, mode='pcore', type_writer=None):
+    def choice(self, node, elem, module, path, type_writer=None):
         """Create sample entries of a list."""
         nel, newm, path = self.sample_element(node, elem, module, path)
         if path is None:
             return
-        node_name = node.arg.replace('-', '_')
+        node_name = node.arg.replace('-', '_').lower()
         self.fd.write("choice node_name {0}\n".format(node_name))
         if type_writer:
-            type_writer.write("    {0} => Optional[Array[{1}::{2}]],\n".format(node_name, self.module_name, node_name.capitalize()))
+            type_writer[0].write("    {0} => Optional[Array[{1}::{2}]],\n".format(node_name, self.module_name, node_name.capitalize()))
+            if node_name != node.arg:
+                type_writer[1][node_name] = node.arg
         else:
             try:
                 description = node.search_one('description').arg
@@ -427,33 +442,33 @@ class AllPuppetPlugin(plugin.PyangPlugin):
             self.fd.write("""  newproperty(:{0}, :array_matching => :all) do
     desc '{1}'
   end \n""".format(node_name, description.replace('\n', ' ').replace("\'", "\\'")))
-        type_writer = StringIO.StringIO()
+        type_writer = [StringIO.StringIO(), {}]
         #pdb.set_trace()
-        type_writer.write('''type {0}::{1} = Object[{{
+        type_writer[0].write('''type {0}::{1} = Object[{{
   attributes => {{\n'''.format(self.module_name, node_name.capitalize()))
-        self.process_children(node, nel, newm, path, mode='pcore', type_writer=type_writer)
+        self.process_children(node, nel, newm, path, type_writer=type_writer)
         minel = node.search_one("min-elements")
         self.add_copies(node, elem, nel, minel)
         self.list_comment(node, nel, minel)
-        type_writer.write("    xmlns => {{type => String, value => \"{0}\", kind => constant}},\n".format(nel.attrib['xmlns']))
-        type_writer.write("}}]\n")
-        self.pcore_types.append((node_name, type_writer))
+        # If there are xml node mappings write them into the main type_writer and collapse it.
+        if len(type_writer[1]) > 0:
+            type_writer[0].write('    xml_mapping => {type => Hash[String,String], value => { ' +
+                                 ', '.join(x for x in ["'{0}' => '{1}'".format(k, v) for k, v in type_writer[1].items()]) +
+                                 ' }, kind => constant},\n')
+        type_writer[0].write("    xmlns => {{type => String, value => \"{0}\", kind => constant}},\n".format(nel.attrib['xmlns']))
+        type_writer[0].write("}}]\n")
+        self.pcore_types.append((node_name, type_writer[0]))
 
-    def leaf_list(self, node, elem, module, path, mode=None, type_writer=None):
+    def leaf_list(self, node, elem, module, path, type_writer=None):
         """Create sample entries of a leaf-list."""
         nel, newm, path = self.sample_element(node, elem, module, path)
         if path is None:
             return
-        #node_name = node.arg.replace('-', '_')
-        #self.fd.write("    {0} => Optional[Array[Vanilla_ice::{1}]]\n".format(node_name, node_name.capitalize()))
-        #self.type_writer.write('''type Vanilla_ice::{0} = Object[{{
-  #attributes => {{\n'''.format(node_name.capitalize()))
         minel = node.search_one("min-elements")
         self.add_copies(node, elem, nel, minel)
         self.list_comment(node, nel, minel)
-        #self.type_writer.write("}}]\n")
 
-    def sample_element(self, node, parent, module, path, mode=None, type_writer=None):
+    def sample_element(self, node, parent, module, path, type_writer=None):
         """Create element under `parent`.
 
         Declare new namespace if necessary.
@@ -501,15 +516,17 @@ class AllPuppetPlugin(plugin.PyangPlugin):
         hi = "" if maxel is None else maxel.arg
         elem.insert(0, ET.Comment(" # entries: %s..%s " % (lo, hi)))
 
-    def puppet_type(self, pname, description, ptype=None, mode=None, type_writer=None):
+    def puppet_type(self, node, description, ptype=None, type_writer=None):
         try:
             ptype = self.yang_type[ptype]
         except:
             ptype = 'String'
-        pname = pname.replace('-', '_').lower()
+        pname = node.arg.replace('-', '_').lower()
         description = description.replace('\n', ' ').replace("\'", "\\'")
         if type_writer:
-            type_writer.write("    {0} => Optional[{1}],\n".format(pname, ptype))
+            type_writer[0].write("    {0} => Optional[{1}],\n".format(pname, ptype))
+            if pname.lower() != node.arg:
+                type_writer[1][pname.lower()] = node.arg
         else:
             self.fd.write("""  newproperty(:{0}) do
         desc '{1}'
