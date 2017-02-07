@@ -227,6 +227,7 @@ class AllPuppetPlugin(plugin.PyangPlugin):
             type_writer = [StringIO.StringIO(), {}]
             type_writer[0].write('''type {0}::{1} = Object[{{
   attributes => {{\n'''.format(self.module_name, node_name.capitalize()))
+            type_writer[1]["_puppet_property"] = node.arg
             if path is None:
                 # If there are xml node mappings write them into the main type_writer and collapse it.
                 if len(type_writer[1]) > 0:
@@ -346,6 +347,7 @@ class AllPuppetPlugin(plugin.PyangPlugin):
         #pdb.set_trace()
         type_writer[0].write('''type {0}::{1} = Object[{{
   attributes => {{\n'''.format(self.module_name, node_name.capitalize()))
+        type_writer[1]["_puppet_property"] = node.arg
         self.process_children(node, nel, newm, path, type_writer=type_writer)
         minel = node.search_one("min-elements")
         self.add_copies(node, elem, nel, minel)
@@ -382,6 +384,7 @@ class AllPuppetPlugin(plugin.PyangPlugin):
         #pdb.set_trace()
         type_writer[0].write('''type {0}::{1} = Object[{{
   attributes => {{\n'''.format(self.module_name, node_name.capitalize()))
+        type_writer[1]["_puppet_property"] = node.arg
         self.process_children(node, nel, newm, path, type_writer=type_writer)
         minel = node.search_one("min-elements")
         self.add_copies(node, elem, nel, minel)
