@@ -126,7 +126,7 @@ class AllPuppetPlugin(plugin.PyangPlugin):
         self.module_name = ctx.opts.module_name.capitalize() if ctx.opts.module_name else "Vanilla_ice"
         self.pcore_name = ctx.opts.pcore_name
         if self.pcore_name:
-            self.module_name = self.module_name + "::" + self.pcore_name.capitalize()
+            self.module_type_name = self.module_name + "::" + self.pcore_name.capitalize()
         self.node_handler = {
             "container": self.container,
             "leaf": self.leaf,
@@ -150,7 +150,8 @@ class AllPuppetPlugin(plugin.PyangPlugin):
             "uint32": "Integer",
             "uint64": "Integer",
             "decimal64": "Float",
-            "boolean": "Boolean"
+            "boolean": "Boolean",
+            "empty": "{0}::YangEmpty".format(self.module_name)
         }
         # Find the namespaces for all modules, not just top level
         self.ns_uri = {statement: statement.search_one("namespace").arg for statement, prefix in unique_prefixes(ctx).iteritems()}
@@ -221,12 +222,12 @@ class AllPuppetPlugin(plugin.PyangPlugin):
             self.process_children(node, nel, newm, path, type_writer=type_writer)
         else:
             if type_writer:
-                type_writer[0].write("    {0} => Optional[{1}::{2}],\n".format(node_name, self.module_name, node_name.capitalize()))
+                type_writer[0].write("    {0} => Optional[{1}::{2}],\n".format(node_name, self.module_type_name, node_name.capitalize()))
                 if node_name != node.arg:
                     type_writer[1][node_name] = node.arg
             type_writer = [StringIO.StringIO(), {}]
             type_writer[0].write('''type {0}::{1} = Object[{{
-  attributes => {{\n'''.format(self.module_name, node_name.capitalize()))
+  attributes => {{\n'''.format(self.module_type_name, node_name.capitalize()))
             type_writer[1]["_puppet_property"] = node.arg
             if path is None:
                 # If there are xml node mappings write them into the main type_writer and collapse it.
@@ -261,13 +262,9 @@ class AllPuppetPlugin(plugin.PyangPlugin):
         except:
             description = ''
 
-        if node.search_one('type').arg.lower() == 'empty':
-            if self.output_format in ("type", "all"):
-                self.puppet_type(node, description, ptype='boolean', type_writer=type_writer)
-        else:
-            if self.output_format in ("type", "all"):
-                ptype = node.search_one('type').arg.lower() or None
-                self.puppet_type(node, description, ptype=ptype, type_writer=type_writer)
+        if self.output_format in ("type", "all"):
+            ptype = node.search_one('type').arg.lower() or None
+            self.puppet_type(node, description, ptype=ptype, type_writer=type_writer)
 
         if self.output_format in ("flush", "all"):
             # We first need to work with the node itself, we do not know the namespace yet
@@ -332,7 +329,7 @@ class AllPuppetPlugin(plugin.PyangPlugin):
             return
         node_name = node.arg.replace('-', '_').lower()
         if type_writer:
-            type_writer[0].write("    {0} => Optional[Array[{1}::{2}]],\n".format(node_name, self.module_name, node_name.capitalize()))
+            type_writer[0].write("    {0} => Optional[Array[{1}::{2}]],\n".format(node_name, self.module_type_name, node_name.capitalize()))
             if node_name != node.arg:
                 type_writer[1][node_name] = node.arg
         else:
@@ -346,7 +343,7 @@ class AllPuppetPlugin(plugin.PyangPlugin):
         type_writer = [StringIO.StringIO(), {}]
         #pdb.set_trace()
         type_writer[0].write('''type {0}::{1} = Object[{{
-  attributes => {{\n'''.format(self.module_name, node_name.capitalize()))
+  attributes => {{\n'''.format(self.module_type_name, node_name.capitalize()))
         type_writer[1]["_puppet_property"] = node.arg
         self.process_children(node, nel, newm, path, type_writer=type_writer)
         minel = node.search_one("min-elements")
@@ -369,7 +366,7 @@ class AllPuppetPlugin(plugin.PyangPlugin):
         node_name = node.arg.replace('-', '_').lower()
         self.fd.write("choice node_name {0}\n".format(node_name))
         if type_writer:
-            type_writer[0].write("    {0} => Optional[Array[{1}::{2}]],\n".format(node_name, self.module_name, node_name.capitalize()))
+            type_writer[0].write("    {0} => Optional[Array[{1}::{2}]],\n".format(node_name, self.module_type_name, node_name.capitalize()))
             if node_name != node.arg:
                 type_writer[1][node_name] = node.arg
         else:
@@ -383,7 +380,7 @@ class AllPuppetPlugin(plugin.PyangPlugin):
         type_writer = [StringIO.StringIO(), {}]
         #pdb.set_trace()
         type_writer[0].write('''type {0}::{1} = Object[{{
-  attributes => {{\n'''.format(self.module_name, node_name.capitalize()))
+  attributes => {{\n'''.format(self.module_type_name, node_name.capitalize()))
         type_writer[1]["_puppet_property"] = node.arg
         self.process_children(node, nel, newm, path, type_writer=type_writer)
         minel = node.search_one("min-elements")
