@@ -185,12 +185,18 @@ class AllPuppetPlugin(plugin.PyangPlugin):
             self.fd.write("\n\n**pcore types**\n")
             for pcore_type in self.pcore_types:
                 if ctx.opts.pcore_path:
-                    directory = ctx.opts.pcore_path + '/' + self.pcore_name if self.pcore_name else ctx.opts.pcore_path
-                    # pcore files are lowercase
-                    directory = directory.lower()
+                    # Create full os path for type file to be created
+                    full_os_path = pcore_type[0].replace("::","/")
+                    full_os_path = full_os_path.replace(self.module_name,ctx.opts.pcore_path)
+                    full_os_path = full_os_path[:full_os_path.rfind('/')]
+                    directory = full_os_path.lower()
+                    # Create namespaced  type filename
+                    filename = pcore_type[0][pcore_type[0].rfind('::'):]
+                    filename = filename.replace("::","").lower()
+
                     if not os.path.exists(directory):
                         os.makedirs(directory)
-                    fname = "{0}/{1}.pp".format(directory, pcore_type[0])
+                    fname = "{0}/{1}.pp".format(directory, filename)
                     with open (fname, 'w') as of:
                         buf = pcore_type[1]
                         buf.seek (0)
@@ -226,8 +232,9 @@ class AllPuppetPlugin(plugin.PyangPlugin):
                 if node_name != node.arg:
                     type_writer[1][node_name] = node.arg
             type_writer = [StringIO.StringIO(), {}]
-            type_writer[0].write('''type {0}::{1} = Object[{{
-  attributes => {{\n'''.format(self.module_type_name, node_name.capitalize()))
+            pcore_namespace = self.get_full_pcore_namespace(self.tree.getpath(elem), node.arg)
+            type_writer[0].write('''type {0} = Object[{{
+  attributes => {{\n'''.format(pcore_namespace))
             type_writer[1]["_puppet_property"] = node.arg
             if path is None:
                 # If there are xml node mappings write them into the main type_writer and collapse it.
@@ -237,7 +244,7 @@ class AllPuppetPlugin(plugin.PyangPlugin):
                                          ' }, kind => constant},\n')
                 type_writer[0].write("    xmlns => {{type => String, value => \"{0}\", kind => constant}},\n".format(nel.attrib['xmlns']))
                 type_writer[0].write("}}]\n")
-                self.pcore_types.append((node_name, type_writer[0]))
+                self.pcore_types.append((pcore_namespace, type_writer[0]))
                 return
             if self.annots:
                 pres = node.search_one("presence")
@@ -252,7 +259,7 @@ class AllPuppetPlugin(plugin.PyangPlugin):
             # Add namespace to type
             type_writer[0].write("    xmlns => {{type => String, value => \"{0}\", kind => constant}},\n".format(nel.attrib['xmlns']))
             type_writer[0].write("}}]\n")
-            self.pcore_types.append((node_name, type_writer[0]))
+            self.pcore_types.append((pcore_namespace, type_writer[0]))
 
     def leaf(self, node, elem, module, path, type_writer=None):
         """Create a sample leaf element."""
@@ -329,7 +336,8 @@ class AllPuppetPlugin(plugin.PyangPlugin):
             return
         node_name = node.arg.replace('-', '_').lower()
         if type_writer:
-            type_writer[0].write("    {0} => Optional[Array[{1}::{2}]],\n".format(node_name, self.module_type_name, node_name.capitalize()))
+            pcore_namespace = self.get_full_pcore_namespace(self.tree.getpath(elem), node.arg)
+            type_writer[0].write("    {0} => Optional[Array[{1}]],\n".format(node_name, pcore_namespace))
             if node_name != node.arg:
                 type_writer[1][node_name] = node.arg
         else:
@@ -342,8 +350,9 @@ class AllPuppetPlugin(plugin.PyangPlugin):
   end \n""".format(node_name, description.replace('\n', ' ').replace("\'", "\\'")))
         type_writer = [StringIO.StringIO(), {}]
         #pdb.set_trace()
-        type_writer[0].write('''type {0}::{1} = Object[{{
-  attributes => {{\n'''.format(self.module_type_name, node_name.capitalize()))
+        pcore_namespace = self.get_full_pcore_namespace(self.tree.getpath(elem), node.arg)
+        type_writer[0].write('''type {0} = Object[{{
+  attributes => {{\n'''.format(pcore_namespace))
         type_writer[1]["_puppet_property"] = node.arg
         self.process_children(node, nel, newm, path, type_writer=type_writer)
         minel = node.search_one("min-elements")
@@ -356,7 +365,7 @@ class AllPuppetPlugin(plugin.PyangPlugin):
                                  ' }, kind => constant},\n')
         type_writer[0].write("    xmlns => {{type => String, value => \"{0}\", kind => constant}},\n".format(nel.attrib['xmlns']))
         type_writer[0].write("}}]\n")
-        self.pcore_types.append((node_name, type_writer[0]))
+        self.pcore_types.append((pcore_namespace, type_writer[0]))
 
     def choice(self, node, elem, module, path, type_writer=None):
         """Create sample entries of a list."""
@@ -365,8 +374,10 @@ class AllPuppetPlugin(plugin.PyangPlugin):
             return
         node_name = node.arg.replace('-', '_').lower()
         self.fd.write("choice node_name {0}\n".format(node_name))
+        pcore_namespace = self.get_full_pcore_namespace(self.tree.getpath(elem), node.arg)
         if type_writer:
-            type_writer[0].write("    {0} => Optional[Array[{1}::{2}]],\n".format(node_name, self.module_type_name, node_name.capitalize()))
+            pcore_namespace = self.get_full_pcore_namespace(self.tree.getpath(elem), node.arg)
+            type_writer[0].write("    {0} => Optional[Array[{1}]],\n".format(node_name, pcore_namespace))
             if node_name != node.arg:
                 type_writer[1][node_name] = node.arg
         else:
@@ -393,7 +404,7 @@ class AllPuppetPlugin(plugin.PyangPlugin):
                                  ' }, kind => constant},\n')
         type_writer[0].write("    xmlns => {{type => String, value => \"{0}\", kind => constant}},\n".format(nel.attrib['xmlns']))
         type_writer[0].write("}}]\n")
-        self.pcore_types.append((node_name, type_writer[0]))
+        self.pcore_types.append((pcore_namespace, type_writer[0]))
 
     def leaf_list(self, node, elem, module, path, type_writer=None):
         """Create sample entries of a leaf-list."""
@@ -451,6 +462,12 @@ class AllPuppetPlugin(plugin.PyangPlugin):
         maxel = node.search_one("max-elements")
         hi = "" if maxel is None else maxel.arg
         elem.insert(0, ET.Comment(" # entries: %s..%s " % (lo, hi)))
+
+    def get_full_pcore_namespace (self, path, nodename):
+       pcore_namespace = path + '::' + nodename
+       pcore_namespace = pcore_namespace.replace("/","::").title()
+       pcore_namespace = pcore_namespace.replace("::Data",self.module_name)
+       return pcore_namespace
 
     def puppet_type(self, node, description, ptype=None, type_writer=None):
         try:
