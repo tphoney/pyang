@@ -227,12 +227,13 @@ class AllPuppetPlugin(plugin.PyangPlugin):
                 return
             self.process_children(node, nel, newm, path, type_writer=type_writer)
         else:
+            pcore_namespace = self.get_full_pcore_namespace(self.tree.getpath(elem), node.arg)
             if type_writer:
-                type_writer[0].write("    {0} => Optional[{1}::{2}],\n".format(node_name, self.module_type_name, node_name.capitalize()))
+                #pdb.set_trace()
+                type_writer[0].write("    {0} => Optional[{1}],\n".format(node_name, pcore_namespace))
                 if node_name != node.arg:
                     type_writer[1][node_name] = node.arg
             type_writer = [StringIO.StringIO(), {}]
-            pcore_namespace = self.get_full_pcore_namespace(self.tree.getpath(elem), node.arg)
             type_writer[0].write('''type {0} = Object[{{
   attributes => {{\n'''.format(pcore_namespace))
             type_writer[1]["_puppet_property"] = node.arg
