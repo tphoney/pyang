@@ -216,51 +216,52 @@ class AllPuppetPlugin(plugin.PyangPlugin):
 
     def container(self, node, elem, module, path, type_writer=None):
         """Create a sample container element and proceed with its children."""
-        # pdb.set_trace()
-        nel, newm, path = self.sample_element(node, elem, module, path)
-        node_name = nel.tag.replace('-', '_').lower()
-        # If this is a top level container it should be a Puppet resource type
-        if elem.tag == "data":
-            if self.output_format in ("type", "all"):
-                self.fd.write("""Puppet::Type.newtype(:{0}) do\n""".format(node_name))
-            if path is None:
-                return
-            self.process_children(node, nel, newm, path, type_writer=type_writer)
-        else:
-            pcore_namespace = self.get_full_pcore_namespace(self.tree.getpath(elem), node.arg)
-            if type_writer:
-                #pdb.set_trace()
-                type_writer[0].write("    {0} => Optional[{1}],\n".format(node_name, pcore_namespace))
-                if node_name != node.arg:
-                    type_writer[1][node_name] = node.arg
-            type_writer = [StringIO.StringIO(), {}]
-            type_writer[0].write('''type {0} = Object[{{
-  attributes => {{\n'''.format(pcore_namespace))
-            type_writer[1]["_puppet_property"] = node.arg
-            if path is None:
-                # If there are xml node mappings write them into the main type_writer and collapse it.
-                if len(type_writer[1]) > 0:
-                    type_writer[0].write('    xml_mapping => {type => Hash[String,String], value => { ' +
-                                         ', '.join(x for x in ["'{0}' => '{1}'".format(k, v) for k, v in type_writer[1].items()]) +
-                                         ' }, kind => constant},\n')
-                type_writer[0].write("    xmlns => {{type => String, value => \"{0}\", kind => constant}},\n".format(nel.attrib['xmlns']))
-                type_writer[0].write("}}]\n")
-                self.pcore_types.append((pcore_namespace, type_writer[0]))
-                return
-            if self.annots:
-                pres = node.search_one("presence")
-                if pres is not None:
-                    nel.append(ET.Comment(" presence: %s " % pres.arg))
-            self.process_children(node, nel, newm, path, type_writer=type_writer)
-            # If there are xml node mappings write them into the main type_writer and collapse it.
-            if len(type_writer[1]) > 0:
-                type_writer[0].write('    xml_mapping => {type => Hash[String,String], value => { ' +
-                                     ', '.join(x for x in ["'{0}' => '{1}'".format(k, v) for k, v in type_writer[1].items()]) +
-                                     ' }, kind => constant},\n')
-            # Add namespace to type
-            type_writer[0].write("    xmlns => {{type => String, value => \"{0}\", kind => constant}},\n".format(nel.attrib['xmlns']))
-            type_writer[0].write("}}]\n")
-            self.pcore_types.append((pcore_namespace, type_writer[0]))
+        # if we contain state ( config = false ) do not proceed
+        if node.i_config:
+          nel, newm, path = self.sample_element(node, elem, module, path)
+          node_name = nel.tag.replace('-', '_').lower()
+          # If this is a top level container it should be a Puppet resource type
+          if elem.tag == "data":
+              if self.output_format in ("type", "all"):
+                  self.fd.write("""Puppet::Type.newtype(:{0}) do\n""".format(node_name))
+              if path is None:
+                  return
+              self.process_children(node, nel, newm, path, type_writer=type_writer)
+          else:
+              pcore_namespace = self.get_full_pcore_namespace(self.tree.getpath(elem), node.arg)
+              if type_writer:
+                  #pdb.set_trace()
+                  type_writer[0].write("    {0} => Optional[{1}],\n".format(node_name, pcore_namespace))
+                  if node_name != node.arg:
+                      type_writer[1][node_name] = node.arg
+              type_writer = [StringIO.StringIO(), {}]
+              type_writer[0].write('''type {0} = Object[{{
+    attributes => {{\n'''.format(pcore_namespace))
+              type_writer[1]["_puppet_property"] = node.arg
+              if path is None:
+                  # If there are xml node mappings write them into the main type_writer and collapse it.
+                  if len(type_writer[1]) > 0:
+                      type_writer[0].write('    xml_mapping => {type => Hash[String,String], value => { ' +
+                                           ', '.join(x for x in ["'{0}' => '{1}'".format(k, v) for k, v in type_writer[1].items()]) +
+                                           ' }, kind => constant},\n')
+                  type_writer[0].write("    xmlns => {{type => String, value => \"{0}\", kind => constant}},\n".format(nel.attrib['xmlns']))
+                  type_writer[0].write("}}]\n")
+                  self.pcore_types.append((pcore_namespace, type_writer[0]))
+                  return
+              if self.annots:
+                  pres = node.search_one("presence")
+                  if pres is not None:
+                      nel.append(ET.Comment(" presence: %s " % pres.arg))
+              self.process_children(node, nel, newm, path, type_writer=type_writer)
+              # If there are xml node mappings write them into the main type_writer and collapse it.
+              if len(type_writer[1]) > 0:
+                  type_writer[0].write('    xml_mapping => {type => Hash[String,String], value => { ' +
+                                       ', '.join(x for x in ["'{0}' => '{1}'".format(k, v) for k, v in type_writer[1].items()]) +
+                                       ' }, kind => constant},\n')
+              # Add namespace to type
+              type_writer[0].write("    xmlns => {{type => String, value => \"{0}\", kind => constant}},\n".format(nel.attrib['xmlns']))
+              type_writer[0].write("}}]\n")
+              self.pcore_types.append((pcore_namespace, type_writer[0]))
 
     def leaf(self, node, elem, module, path, type_writer=None):
         """Create a sample leaf element."""
@@ -280,15 +281,14 @@ class AllPuppetPlugin(plugin.PyangPlugin):
             if mm != module:
                 node_ns = self.ns_uri[mm]
                 module = mm
-            # else:
-            #     # Check if node is extending a base identiy, if so use base namespace
-            #     try:
-            #         identity_prefix = node.search_one('type').search_one('base').arg.split(':')[0]
-            #         prefix_uri = dictsearch(identity_prefix, unique_prefixes(mm.i_ctx))
-            #         node_ns = self.ns_uri[prefix_uri]
-            #     except:
-            #         node_ns = self.ns_uri[module]
-            node_ns = self.ns_uri[module]
+            else:
+                 # Check if node is extending a base identiy, if so use base namespace
+                 try:
+                     identity_prefix = node.search_one('type').search_one('base').arg.split(':')[0]
+                     prefix_uri = dictsearch(identity_prefix, unique_prefixes(mm.i_ctx))
+                     node_ns = self.ns_uri[prefix_uri]
+                 except:
+                     node_ns = self.ns_uri[module]
 
             # Set the node itself - this is outermost part of xpath
             ns_object = dictsearch(node_ns, self.ns_uri)
@@ -301,7 +301,6 @@ class AllPuppetPlugin(plugin.PyangPlugin):
             # Walk backwards for ancestors
             for parent in elem.iterancestors():
                 # We do not want the document top level
-                # pdb.set_trace()
                 if parent.attrib['xmlns'] == 'urn:ietf:params:xml:ns:netconf:base:1.0':
                     continue
                 else:
@@ -316,7 +315,7 @@ class AllPuppetPlugin(plugin.PyangPlugin):
                 return
             if self.annots:
                 nel.append(ET.Comment(" type: %s " % node.search_one("type").arg))
-        elif self.defaults:
+        else:
             nel, newm, path = self.sample_element(node, elem, module, path)
             if path is None:
                 return
@@ -437,16 +436,15 @@ class AllPuppetPlugin(plugin.PyangPlugin):
         if mm != module:
             res.attrib["xmlns"] = self.ns_uri[mm]
             module = mm
-        # else:
-        #     # Check if node is extending a base identiy, if so use base namespace
-        #     try:
-        #         identity_prefix = node.search_one('type').search_one('base').arg.split(':')[0]
-        #         prefix_uri = dictsearch(identity_prefix, unique_prefixes(mm.i_ctx))
-        #         res.attrib["xmlns"] = self.ns_uri[prefix_uri]
-        #     except:
-        #         # pdb.set_trace()
-        #         res.attrib["xmlns"] = self.ns_uri[module]
-        res.attrib["xmlns"] = self.ns_uri[module]
+        else:
+            # Check if node is extending a base identiy, if so use base namespace
+            try:
+                identity_prefix = node.search_one('type').search_one('base').arg.split(':')[0]
+                prefix_uri = dictsearch(identity_prefix, unique_prefixes(mm.i_ctx))
+                res.attrib["xmlns"] = self.ns_uri[prefix_uri]
+            except:
+                # pdb.set_trace()
+                res.attrib["xmlns"] = self.ns_uri[module]
         return res, module, path
 
     def add_copies(self, node, parent, elem, minel):
